@@ -1,0 +1,17 @@
+node_modules
+dist
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Prisma generated client
+/generated/prisma
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS
+.DS_Store

@@ -1,0 +1,555 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ─── Enums ───────────────────────────────────────────────────────────────────
+
+enum UserRole {
+  CUSTOMER
+  AFFILIATE
+  INFLUENCER
+  VENDOR
+  ADMIN
+}
+
+enum UserStatus {
+  PENDING_VERIFICATION
+  ACTIVE
+  SUSPENDED
+}
+
+enum KycStatus {
+  PENDING
+  SUBMITTED
+  VERIFIED
+  REJECTED
+  PENDING_MANUAL
+}
+
+enum OrderStatus {
+  PENDING
+  CONFIRMED
+  PROCESSING
+  SHIPPED
+  DELIVERED
+  COMPLETED
+  CANCELLED
+  REFUNDED
+}
+
+enum CommissionStatus {
+  PENDING
+  CONFIRMED
+  QUEUED
+  DISBURSED
+  VOIDED
+}
+
+enum PayoutBatchStatus {
+  PENDING
+  DISBURSED
+}
+
+enum CampaignStatus {
+  ACTIVE
+  PAUSED
+  ENDED
+}
+
+enum ProductStatus {
+  DRAFT
+  PENDING_REVIEW
+  ACTIVE
+  REJECTED
+  REMOVED
+}
+
+enum BeneficiaryType {
+  AFFILIATE
+  INFLUENCER
+}
+
+enum PayoutModel {
+  COMMISSION
+  FLAT
+}
+
+enum CommissionRuleScope {
+  GLOBAL
+  VENDOR
+  PRODUCT
+}
+
+// ─── Core ────────────────────────────────────────────────────────────────────
+
+model User {
+  id        String     @id @default(uuid())
+  email     String?    @unique
+  phone     String?    @unique
+  password  String?
+  firstName String
+  lastName  String
+  role      UserRole   @default(CUSTOMER)
+  status    UserStatus @default(PENDING_VERIFICATION)
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  affiliateProfile   AffiliateProfile?
+  influencerProfile  InfluencerProfile?
+  vendorProfile      VendorProfile?
+  orders             Order[]
+  cart               Cart?
+  auditLogsActed     AuditLog[]         @relation("AuditActor")
+  commissionRecords  CommissionRecord[]
+  payoutBatchesAdmin PayoutBatch[]
+
+  @@map("users")
+}
+
+// ─── Profiles ────────────────────────────────────────────────────────────────
+
+model AffiliateProfile {
+  id                String    @id @default(uuid())
+  userId            String    @unique
+  user              User      @relation(fields: [userId], references: [id])
+  referralCode      String?   @unique
+  kycStatus         KycStatus @default(PENDING)
+  assessmentPassed  Boolean   @default(false)
+  tutorialCompleted Boolean   @default(false)
+  isActive          Boolean   @default(false)
+  ninEncrypted      String?
+  bvnEncrypted      String?
+  bankDetailsJson   String?
+  kycSubmittedAt    DateTime?
+  kycVerifiedAt     DateTime?
+  kycRejectedReason String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  kycSubmission      KycSubmission?
+  tutorialProgress   AffiliateTutorialProgress[]
+  assessmentAttempts AssessmentAttempt[]
+
+  @@map("affiliate_profiles")
+}
+
+model InfluencerProfile {
+  id             String   @id @default(uuid())
+  userId         String   @unique
+  user           User     @relation(fields: [userId], references: [id])
+  influencerCode String   @unique @default(cuid())
+  socialHandles  Json
+  niche          String?
+  followerCount  Int?
+  contentLinks   String[]
+  isApproved     Boolean  @default(false)
+  approvedAt     DateTime?
+  rejectedReason String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  campaignAssignments CampaignInfluencerAssignment[]
+  promoCodes          PromoCode[]
+
+  @@map("influencer_profiles")
+}
+
+model VendorProfile {
+  id              String   @id @default(uuid())
+  userId          String   @unique
+  user            User     @relation(fields: [userId], references: [id])
+  businessName    String
+  productCategory String?
+  bankDetailsJson String?
+  isApproved      Boolean  @default(false)
+  approvedAt      DateTime?
+  rejectedReason  String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  products Product[]
+
+  @@map("vendor_profiles")
+}
+
+// ─── KYC ─────────────────────────────────────────────────────────────────────
+
+model KycSubmission {
+  id          String           @id @default(uuid())
+  affiliateId String           @unique
+  affiliate   AffiliateProfile @relation(fields: [affiliateId], references: [id])
+  ninLast4    String?
+  bvnLast4    String?
+  bankCode    String
+  accountName String?
+  smileIdRef  String?
+  submittedAt DateTime         @default(now())
+  verifiedAt  DateTime?
+  rejectedAt  DateTime?
+  reason      String?
+
+  @@map("kyc_submissions")
+}
+
+// ─── Hub ─────────────────────────────────────────────────────────────────────
+
+model Vertical {
+  id          String   @id @default(uuid())
+  name        String
+  slug        String   @unique
+  description String?
+  heroImage   String?
+  icon        String?
+  isActive    Boolean  @default(true)
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+
+  services       VerticalService[]
+  portfolioItems PortfolioItem[]
+  quoteRequests  QuoteRequest[]
+
+  @@map("verticals")
+}
+
+model VerticalService {
+  id          String   @id @default(uuid())
+  verticalId  String
+  vertical    Vertical @relation(fields: [verticalId], references: [id])
+  name        String
+  description String?
+  sortOrder   Int      @default(0)
+
+  @@map("vertical_services")
+}
+
+model PortfolioItem {
+  id         String   @id @default(uuid())
+  verticalId String
+  vertical   Vertical @relation(fields: [verticalId], references: [id])
+  imageUrl   String
+  caption    String?
+  sortOrder  Int      @default(0)
+
+  @@map("portfolio_items")
+}
+
+model QuoteRequest {
+  id          String    @id @default(uuid())
+  verticalId  String?
+  vertical    Vertical? @relation(fields: [verticalId], references: [id])
+  name        String
+  email       String?
+  phone       String?
+  description String
+  isRead      Boolean   @default(false)
+  createdAt   DateTime  @default(now())
+
+  @@map("quote_requests")
+}
+
+// ─── Commerce ────────────────────────────────────────────────────────────────
+
+model Product {
+  id             String         @id @default(uuid())
+  vendorId       String?
+  vendor         VendorProfile? @relation(fields: [vendorId], references: [id])
+  title          String
+  slug           String         @unique
+  description    String?
+  price          Decimal        @db.Decimal(12, 2)
+  commissionRate Decimal        @default(0) @db.Decimal(5, 2)
+  stockQuantity  Int            @default(0)
+  category       String?
+  status         ProductStatus  @default(DRAFT)
+  rejectedReason String?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  images          ProductImage[]
+  cartItems       CartItem[]
+  orderItems      OrderItem[]
+  commissionRules CommissionRule[]
+
+  @@map("products")
+}
+
+model ProductImage {
+  id           String  @id @default(uuid())
+  productId    String
+  product      Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  url          String
+  cloudinaryId String?
+  sortOrder    Int     @default(0)
+
+  @@map("product_images")
+}
+
+model Cart {
+  id        String   @id @default(uuid())
+  userId    String   @unique
+  user      User     @relation(fields: [userId], references: [id])
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  items CartItem[]
+
+  @@map("carts")
+}
+
+model CartItem {
+  id        String  @id @default(uuid())
+  cartId    String
+  cart      Cart    @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  productId String
+  product   Product @relation(fields: [productId], references: [id])
+  quantity  Int     @default(1)
+
+  @@unique([cartId, productId])
+  @@map("cart_items")
+}
+
+model Order {
+  id              String      @id @default(uuid())
+  customerId      String
+  customer        User        @relation(fields: [customerId], references: [id])
+  status          OrderStatus @default(PENDING)
+  total           Decimal     @db.Decimal(12, 2)
+  paymentRef      String?     @unique
+  affiliateCode   String?
+  influencerCode  String?
+  promoCode       String?
+  deliveryAddress Json?
+  notes           String?
+  confirmedAt     DateTime?
+  shippedAt       DateTime?
+  deliveredAt     DateTime?
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  items             OrderItem[]
+  commissionRecords CommissionRecord[]
+
+  @@map("orders")
+}
+
+model OrderItem {
+  id         String  @id @default(uuid())
+  orderId    String
+  order      Order   @relation(fields: [orderId], references: [id])
+  productId  String
+  product    Product @relation(fields: [productId], references: [id])
+  quantity   Int
+  unitPrice  Decimal @db.Decimal(12, 2)
+  totalPrice Decimal @db.Decimal(12, 2)
+
+  @@map("order_items")
+}
+
+// ─── Commission & Payouts ─────────────────────────────────────────────────────
+
+model CommissionRecord {
+  id              String           @id @default(uuid())
+  orderId         String
+  order           Order            @relation(fields: [orderId], references: [id])
+  beneficiaryId   String
+  beneficiary     User             @relation(fields: [beneficiaryId], references: [id])
+  beneficiaryType BeneficiaryType
+  amount          Decimal          @db.Decimal(12, 2)
+  status          CommissionStatus @default(PENDING)
+  payoutBatchId   String?
+  payoutBatch     PayoutBatch?     @relation(fields: [payoutBatchId], references: [id])
+  createdAt       DateTime         @default(now())
+  disbursedAt     DateTime?
+
+  @@unique([orderId, beneficiaryId])
+  @@map("commission_records")
+}
+
+model PayoutBatch {
+  id            String            @id @default(uuid())
+  scheduledDate DateTime
+  totalAmount   Decimal           @default(0) @db.Decimal(12, 2)
+  status        PayoutBatchStatus @default(PENDING)
+  adminId       String?
+  admin         User?             @relation(fields: [adminId], references: [id])
+  disbursedAt   DateTime?
+  createdAt     DateTime          @default(now())
+
+  commissionRecords CommissionRecord[]
+
+  @@map("payout_batches")
+}
+
+model CommissionRule {
+  id             String              @id @default(uuid())
+  scope          CommissionRuleScope @default(GLOBAL)
+  vendorId       String?
+  productId      String?
+  product        Product?            @relation(fields: [productId], references: [id])
+  affiliateRate  Decimal             @db.Decimal(5, 2)
+  platformRate   Decimal             @db.Decimal(5, 2)
+  influencerRate Decimal             @db.Decimal(5, 2)
+  effectiveFrom  DateTime
+  effectiveTo    DateTime?
+  createdAt      DateTime            @default(now())
+
+  @@map("commission_rules")
+}
+
+// ─── Influencer Campaigns ─────────────────────────────────────────────────────
+
+model Campaign {
+  id             String         @id @default(uuid())
+  title          String
+  brief          String?
+  productIds     String[]
+  payoutModel    PayoutModel    @default(COMMISSION)
+  commissionRate Decimal?       @db.Decimal(5, 2)
+  flatAmount     Decimal?       @db.Decimal(12, 2)
+  startDate      DateTime
+  endDate        DateTime
+  status         CampaignStatus @default(ACTIVE)
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  assignments CampaignInfluencerAssignment[]
+
+  @@map("campaigns")
+}
+
+model CampaignInfluencerAssignment {
+  id           String            @id @default(uuid())
+  campaignId   String
+  campaign     Campaign          @relation(fields: [campaignId], references: [id])
+  influencerId String
+  influencer   InfluencerProfile @relation(fields: [influencerId], references: [id])
+  utmLink      String?
+  assignedAt   DateTime          @default(now())
+
+  @@unique([campaignId, influencerId])
+  @@map("campaign_influencer_assignments")
+}
+
+model PromoCode {
+  id           String             @id @default(uuid())
+  code         String             @unique
+  campaignId   String?
+  influencerId String?
+  influencer   InfluencerProfile? @relation(fields: [influencerId], references: [id])
+  isActive     Boolean            @default(true)
+  usageCount   Int                @default(0)
+  createdAt    DateTime           @default(now())
+
+  @@map("promo_codes")
+}
+
+// ─── Tutorial & Assessment ────────────────────────────────────────────────────
+
+model TutorialStep {
+  id          String   @id @default(uuid())
+  title       String
+  videoUrl    String?
+  content     String?
+  fileUrls    String[]
+  sortOrder   Int      @default(0)
+  isPublished Boolean  @default(false)
+  createdAt   DateTime @default(now())
+
+  progress AffiliateTutorialProgress[]
+
+  @@map("tutorial_steps")
+}
+
+model AffiliateTutorialProgress {
+  id          String           @id @default(uuid())
+  affiliateId String
+  affiliate   AffiliateProfile @relation(fields: [affiliateId], references: [id])
+  stepId      String
+  step        TutorialStep     @relation(fields: [stepId], references: [id])
+  completedAt DateTime         @default(now())
+
+  @@unique([affiliateId, stepId])
+  @@map("affiliate_tutorial_progress")
+}
+
+model AssessmentQuestion {
+  id            String   @id @default(uuid())
+  text          String
+  options       Json
+  correctOption String
+  explanation   String?
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+
+  answers AssessmentAnswer[]
+
+  @@map("assessment_questions")
+}
+
+model AssessmentAttempt {
+  id          String           @id @default(uuid())
+  affiliateId String
+  affiliate   AffiliateProfile @relation(fields: [affiliateId], references: [id])
+  score       Int
+  passed      Boolean
+  attemptedAt DateTime         @default(now())
+
+  answers AssessmentAnswer[]
+
+  @@map("assessment_attempts")
+}
+
+model AssessmentAnswer {
+  id         String             @id @default(uuid())
+  attemptId  String
+  attempt    AssessmentAttempt  @relation(fields: [attemptId], references: [id])
+  questionId String
+  question   AssessmentQuestion @relation(fields: [questionId], references: [id])
+  selected   String
+  isCorrect  Boolean
+
+  @@map("assessment_answers")
+}
+
+// ─── Tracking & Audit ─────────────────────────────────────────────────────────
+
+model ClickEvent {
+  id             String   @id @default(uuid())
+  influencerCode String
+  campaignId     String?
+  productId      String?
+  userAgent      String?
+  timestamp      DateTime @default(now())
+
+  @@map("click_events")
+}
+
+model WebhookEvent {
+  id              String   @id @default(uuid())
+  provider        String
+  externalEventId String   @unique
+  eventType       String
+  payload         Json
+  processedAt     DateTime @default(now())
+
+  @@map("webhook_events")
+}
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  actorId    String
+  actor      User     @relation("AuditActor", fields: [actorId], references: [id])
+  action     String
+  targetType String
+  targetId   String?
+  before     Json?
+  after      Json?
+  createdAt  DateTime @default(now())
+
+  @@map("audit_logs")
+}
+
