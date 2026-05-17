@@ -1,27 +1,45 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, OnModuleDestroy, OnModuleInit, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { Redis } from '@upstash/redis';
+import Redis from 'ioredis';
 
 @Injectable()
-export class RedisService {
+export class RedisService implements OnModuleInit, OnModuleDestroy {
+  private readonly logger = new Logger(RedisService.name);
   private readonly client: Redis;
 
   constructor(private configService: ConfigService) {
-    this.client = new Redis({
-      url: this.configService.getOrThrow('UPSTASH_REDIS_REST_URL'),
-      token: this.configService.getOrThrow('UPSTASH_REDIS_REST_TOKEN'),
+    this.client = new Redis(this.configService.getOrThrow<string>('REDIS_URL'), {
+      maxRetriesPerRequest: 3,
+      lazyConnect: true,
     });
+
+    this.client.on('error', (err) => this.logger.error('Redis error', err));
+  }
+
+  async onModuleInit() {
+    await this.client.connect();
+  }
+
+  async onModuleDestroy() {
+    await this.client.quit();
   }
 
   async get<T>(key: string): Promise<T | null> {
-    return this.client.get<T>(key);
+    const value = await this.client.get(key);
+    if (value === null) return null;
+    try {
+      return JSON.parse(value) as T;
+    } catch {
+      return value as unknown as T;
+    }
   }
 
   async set(key: string, value: unknown, ttlSeconds?: number): Promise<void> {
+    const serialized = typeof value === 'string' ? value : JSON.stringify(value);
     if (ttlSeconds) {
-      await this.client.set(key, value, { ex: ttlSeconds });
+      await this.client.set(key, serialized, 'EX', ttlSeconds);
     } else {
-      await this.client.set(key, value);
+      await this.client.set(key, serialized);
     }
   }
 

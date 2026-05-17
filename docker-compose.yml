@@ -1,0 +1,60 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: daniliya
+      POSTGRES_PASSWORD: daniliya
+      POSTGRES_DB: daniliya_dev
+    ports:
+      - "5433:5432"          # exposed so Prisma Studio can connect from host
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U daniliya -d daniliya_dev"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    restart: unless-stopped
+    ports:
+      - "4000:4000"
+    environment:
+      NODE_ENV: development
+      PORT: 4000
+      DATABASE_URL: postgresql://daniliya:daniliya@postgres:5432/daniliya_dev
+      REDIS_URL: redis://redis:6379
+      CORS_ORIGIN: http://localhost:3000
+      # Copy remaining vars from your .env — or use an env_file:
+      # env_file: .env
+    env_file:
+      - path: .env
+        required: false        # won't crash if .env doesn't exist yet
+    volumes:
+      - ./src:/app/src         # hot reload — changes to src/ reflect immediately
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+  redis_data:

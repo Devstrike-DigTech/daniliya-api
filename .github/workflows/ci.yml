@@ -12,10 +12,10 @@ jobs:
 
     services:
       postgres:
-        image: postgres:16
+        image: postgres:16-alpine
         env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
+          POSTGRES_USER: daniliya
+          POSTGRES_PASSWORD: daniliya
           POSTGRES_DB: daniliya_test
         options: >-
           --health-cmd pg_isready
@@ -24,6 +24,16 @@ jobs:
           --health-retries 5
         ports:
           - 5432:5432
+
+      redis:
+        image: redis:7-alpine
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
 
     steps:
       - uses: actions/checkout@v4
@@ -40,12 +50,12 @@ jobs:
       - name: Generate Prisma client
         run: npx prisma generate
         env:
-          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/daniliya_test
+          DATABASE_URL: postgresql://daniliya:daniliya@localhost:5432/daniliya_test
 
       - name: Run database migrations
         run: npx prisma migrate deploy
         env:
-          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/daniliya_test
+          DATABASE_URL: postgresql://daniliya:daniliya@localhost:5432/daniliya_test
 
       - name: Type check
         run: npx tsc --noEmit
@@ -56,16 +66,15 @@ jobs:
       - name: Run tests
         run: npm test -- --passWithNoTests
         env:
-          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/daniliya_test
+          DATABASE_URL: postgresql://daniliya:daniliya@localhost:5432/daniliya_test
+          REDIS_URL: redis://localhost:6379
           JWT_ACCESS_SECRET: ci-access-secret-32-chars-padding
           JWT_REFRESH_SECRET: ci-refresh-secret-32-chars-padding
           JWT_ACCESS_EXPIRES_IN: 15m
           JWT_REFRESH_EXPIRES_IN: 7d
           ENCRYPTION_KEY: ci-encryption-key-32-chars-pad!
-          UPSTASH_REDIS_REST_URL: ${{ secrets.UPSTASH_REDIS_REST_URL }}
-          UPSTASH_REDIS_REST_TOKEN: ${{ secrets.UPSTASH_REDIS_REST_TOKEN }}
 
       - name: Build
         run: npm run build
         env:
-          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/daniliya_test
+          DATABASE_URL: postgresql://daniliya:daniliya@localhost:5432/daniliya_test
