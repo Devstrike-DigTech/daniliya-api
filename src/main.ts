@@ -8,7 +8,9 @@ import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import { ResponseInterceptor } from './common/interceptors/response.interceptor';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  // rawBody: keep the unparsed buffer available (req.rawBody) so payment
+  // webhooks can verify HMAC signatures against the exact bytes received.
+  const app = await NestFactory.create(AppModule, { rawBody: true });
 
   const configService = app.get(ConfigService);
   const isProd = configService.get('NODE_ENV') === 'production';

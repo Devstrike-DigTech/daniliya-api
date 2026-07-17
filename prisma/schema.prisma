@@ -16,6 +16,14 @@ enum UserRole {
   ADMIN
 }
 
+/// Back-office RBAC. Only meaningful for users with role = ADMIN.
+enum AdminRole {
+  SUPERADMIN
+  FINANCE
+  SUPPORT
+  USER_MANAGER
+}
+
 enum UserStatus {
   PENDING_VERIFICATION
   ACTIVE
@@ -50,8 +58,36 @@ enum CommissionStatus {
 }
 
 enum PayoutBatchStatus {
+  SCHEDULED
+  REVIEW
+  HELD
+  PAID
+  FAILED
+  CANCELLED
+}
+
+enum PayoutAudience {
+  AFFILIATE
+  INFLUENCER
+  VENDOR
+}
+
+enum PayoutItemStatus {
   PENDING
-  DISBURSED
+  PAID
+  FAILED
+}
+
+enum TransferStatus {
+  PENDING
+  SUCCESS
+  FAILED
+  REVERSED
+}
+
+enum LedgerType {
+  CREDIT
+  DEBIT
 }
 
 enum CampaignStatus {
@@ -66,6 +102,50 @@ enum ProductStatus {
   ACTIVE
   REJECTED
   REMOVED
+}
+
+enum FulfilmentMode {
+  DELIVERY
+  PICKUP
+}
+
+enum PaymentMethod {
+  PAYSTACK
+  FLUTTERWAVE
+  PAY_ON_DELIVERY
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  FAILED
+  REFUNDED
+}
+
+enum OrderChannel {
+  WEB
+  AFFILIATE
+  INFLUENCER
+}
+
+enum BookingStatus {
+  REQUESTED
+  CONFIRMED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum ReviewStatus {
+  PUBLISHED
+  FLAGGED
+  REMOVED
+}
+
+enum SubmissionStatus {
+  SUBMITTED
+  APPROVED
+  REJECTED
 }
 
 enum BeneficiaryType {
@@ -101,13 +181,53 @@ model User {
   affiliateProfile   AffiliateProfile?
   influencerProfile  InfluencerProfile?
   vendorProfile      VendorProfile?
+  adminProfile       AdminProfile?
+  kycSubmission      KycSubmission?
+  bankAccounts       BankAccount[]
   orders             Order[]
   cart               Cart?
   auditLogsActed     AuditLog[]         @relation("AuditActor")
   commissionRecords  CommissionRecord[]
   payoutBatchesAdmin PayoutBatch[]
+  payoutItems        PayoutItem[]       @relation("PayoutBeneficiary")
+  wallet             Wallet?
+  bookings           Booking[]
+  reviews            Review[]
 
   @@map("users")
+}
+
+/// Back-office staff member. Created via admin invite; carries the RBAC role.
+model AdminProfile {
+  id         String    @id @default(uuid())
+  userId     String    @unique
+  user       User      @relation(fields: [userId], references: [id])
+  role       AdminRole @default(SUPPORT)
+  lastActive DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@map("admin_profiles")
+}
+
+/// Payout destination. Account name is resolved server-side via bank
+/// name-enquiry — never trusted from the client.
+model BankAccount {
+  id            String   @id @default(uuid())
+  userId        String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  bankCode      String
+  bankName      String
+  accountNumber String
+  accountName   String
+  isDefault     Boolean  @default(false)
+  verified      Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  kycSubmissions KycSubmission[]
+
+  @@unique([userId, bankCode, accountNumber])
+  @@map("bank_accounts")
 }
 
 // ─── Profiles ────────────────────────────────────────────────────────────────
@@ -130,7 +250,6 @@ model AffiliateProfile {
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
 
-  kycSubmission      KycSubmission?
   tutorialProgress   AffiliateTutorialProgress[]
   assessmentAttempts AssessmentAttempt[]
 
@@ -172,25 +291,33 @@ model VendorProfile {
   updatedAt       DateTime @updatedAt
 
   products Product[]
+  reviews  Review[]
 
   @@map("vendor_profiles")
 }
 
 // ─── KYC ─────────────────────────────────────────────────────────────────────
 
+/// User-level KYC. Affiliates, influencers and vendors all verify through this
+/// one record (Smile ID for identity + bank name-enquiry for the payout
+/// account). NIN/BVN are optional — the live portals collect a government ID
+/// upload and resolve the account name instead.
 model KycSubmission {
-  id          String           @id @default(uuid())
-  affiliateId String           @unique
-  affiliate   AffiliateProfile @relation(fields: [affiliateId], references: [id])
-  ninLast4    String?
-  bvnLast4    String?
-  bankCode    String
-  accountName String?
-  smileIdRef  String?
-  submittedAt DateTime         @default(now())
-  verifiedAt  DateTime?
-  rejectedAt  DateTime?
-  reason      String?
+  id            String       @id @default(uuid())
+  userId        String       @unique
+  user          User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  status        KycStatus    @default(PENDING)
+  govIdType     String?
+  govIdUrl      String?
+  bankAccountId String?
+  bankAccount   BankAccount? @relation(fields: [bankAccountId], references: [id])
+  ninLast4      String?
+  bvnLast4      String?
+  smileIdRef    String?      @unique
+  reason        String?
+  submittedAt   DateTime     @default(now())
+  verifiedAt    DateTime?
+  rejectedAt    DateTime?
 
   @@map("kyc_submissions")
 }
@@ -211,6 +338,7 @@ model Vertical {
   services       VerticalService[]
   portfolioItems PortfolioItem[]
   quoteRequests  QuoteRequest[]
+  bookings       Booking[]
 
   @@map("verticals")
 }
@@ -251,6 +379,63 @@ model QuoteRequest {
   @@map("quote_requests")
 }
 
+/// A service request that runs a lifecycle (unlike the raw QuoteRequest intake).
+/// customerId is null for guest submissions from the public site.
+model Booking {
+  id            String        @id @default(uuid())
+  ref           String        @unique
+  customerId    String?
+  customer      User?         @relation(fields: [customerId], references: [id])
+  verticalId    String?
+  vertical      Vertical?     @relation(fields: [verticalId], references: [id])
+  status        BookingStatus @default(REQUESTED)
+  name          String
+  email         String
+  phone         String
+  city          String?
+  address       String?
+  description   String
+  budget        Decimal?      @db.Decimal(12, 2)
+  quotedAmount  Decimal?      @db.Decimal(12, 2)
+  preferredDate DateTime?
+  attachments   String[]
+  adminNote     String?
+  cancelReason  String?
+  confirmedAt   DateTime?
+  completedAt   DateTime?
+  cancelledAt   DateTime?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  @@index([status])
+  @@map("bookings")
+}
+
+/// Product / vendor rating. A review targets a product (and optionally records
+/// the vendor for store-level rollups). Verified when tied to a delivered order.
+model Review {
+  id           String       @id @default(uuid())
+  authorId     String
+  author       User         @relation(fields: [authorId], references: [id])
+  productId    String?
+  product      Product?     @relation(fields: [productId], references: [id])
+  vendorId     String?
+  vendor       VendorProfile? @relation(fields: [vendorId], references: [id])
+  orderId      String?
+  rating       Int
+  body         String
+  status       ReviewStatus @default(PUBLISHED)
+  flagReason   String?
+  responseBody String?
+  responseAt   DateTime?
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  @@index([productId])
+  @@index([status])
+  @@map("reviews")
+}
+
 // ─── Commerce ────────────────────────────────────────────────────────────────
 
 model Product {
@@ -273,6 +458,7 @@ model Product {
   cartItems       CartItem[]
   orderItems      OrderItem[]
   commissionRules CommissionRule[]
+  reviews         Review[]
 
   @@map("products")
 }
@@ -307,46 +493,101 @@ model CartItem {
   productId String
   product   Product @relation(fields: [productId], references: [id])
   quantity  Int     @default(1)
+  /// Signature gift packaging — carried through to the order at checkout.
+  giftWrap  Boolean @default(false)
+  giftMeta  Json?
 
   @@unique([cartId, productId])
   @@map("cart_items")
 }
 
 model Order {
-  id              String      @id @default(uuid())
+  id              String         @id @default(uuid())
+  /// Human-facing tracking reference, e.g. DNL-1Z5X5B
+  ref             String         @unique
   customerId      String
-  customer        User        @relation(fields: [customerId], references: [id])
-  status          OrderStatus @default(PENDING)
-  total           Decimal     @db.Decimal(12, 2)
-  paymentRef      String?     @unique
+  customer        User           @relation(fields: [customerId], references: [id])
+  status          OrderStatus    @default(PENDING)
+  channel         OrderChannel   @default(WEB)
+  fulfilmentMode  FulfilmentMode @default(DELIVERY)
+  /// Money breakdown — all Decimal(12,2) naira. total = subtotal + giftAddon + deliveryFee + tax
+  subtotal        Decimal        @db.Decimal(12, 2)
+  giftAddon       Decimal        @default(0) @db.Decimal(12, 2)
+  deliveryFee     Decimal        @default(0) @db.Decimal(12, 2)
+  tax             Decimal        @default(0) @db.Decimal(12, 2)
+  total           Decimal        @db.Decimal(12, 2)
+  paymentRef      String?        @unique
   affiliateCode   String?
   influencerCode  String?
   promoCode       String?
   deliveryAddress Json?
+  contact         Json?
   notes           String?
   confirmedAt     DateTime?
   shippedAt       DateTime?
   deliveredAt     DateTime?
-  createdAt       DateTime    @default(now())
-  updatedAt       DateTime    @updatedAt
+  cancelledAt     DateTime?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
 
   items             OrderItem[]
   commissionRecords CommissionRecord[]
+  payment           Payment?
+  shipment          Shipment?
 
+  @@index([customerId])
+  @@index([status])
   @@map("orders")
 }
 
 model OrderItem {
   id         String  @id @default(uuid())
   orderId    String
-  order      Order   @relation(fields: [orderId], references: [id])
+  order      Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
   productId  String
   product    Product @relation(fields: [productId], references: [id])
+  /// Snapshot of the product title at purchase time — catalogue edits must not
+  /// rewrite historical orders.
+  titleSnapshot String
   quantity   Int
   unitPrice  Decimal @db.Decimal(12, 2)
+  giftWrap   Boolean @default(false)
+  giftMeta   Json?
   totalPrice Decimal @db.Decimal(12, 2)
 
   @@map("order_items")
+}
+
+model Payment {
+  id          String        @id @default(uuid())
+  orderId     String        @unique
+  order       Order         @relation(fields: [orderId], references: [id])
+  method      PaymentMethod
+  status      PaymentStatus @default(PENDING)
+  amount      Decimal       @db.Decimal(12, 2)
+  /// Gateway reference (Paystack/Flutterwave). Unique so webhook replays dedupe.
+  providerRef String?       @unique
+  authUrl     String?
+  paidAt      DateTime?
+  failedAt    DateTime?
+  refundedAt  DateTime?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  @@map("payments")
+}
+
+model Shipment {
+  id                String    @id @default(uuid())
+  orderId           String    @unique
+  order             Order     @relation(fields: [orderId], references: [id])
+  courier           String?
+  trackingNumber    String?
+  estimatedDelivery DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@map("shipments")
 }
 
 // ─── Commission & Payouts ─────────────────────────────────────────────────────
@@ -362,6 +603,9 @@ model CommissionRecord {
   status          CommissionStatus @default(PENDING)
   payoutBatchId   String?
   payoutBatch     PayoutBatch?     @relation(fields: [payoutBatchId], references: [id])
+  payoutItemId    String?
+  payoutItem      PayoutItem?      @relation(fields: [payoutItemId], references: [id])
+  confirmedAt     DateTime?
   createdAt       DateTime         @default(now())
   disbursedAt     DateTime?
 
@@ -371,17 +615,96 @@ model CommissionRecord {
 
 model PayoutBatch {
   id            String            @id @default(uuid())
+  ref           String            @unique
+  audience      PayoutAudience
   scheduledDate DateTime
   totalAmount   Decimal           @default(0) @db.Decimal(12, 2)
-  status        PayoutBatchStatus @default(PENDING)
+  status        PayoutBatchStatus @default(SCHEDULED)
   adminId       String?
   admin         User?             @relation(fields: [adminId], references: [id])
+  approvedAt    DateTime?
   disbursedAt   DateTime?
   createdAt     DateTime          @default(now())
 
   commissionRecords CommissionRecord[]
+  items             PayoutItem[]
+  checks            ComplianceCheck[]
 
   @@map("payout_batches")
+}
+
+model PayoutItem {
+  id             String           @id @default(uuid())
+  batchId        String
+  batch          PayoutBatch      @relation(fields: [batchId], references: [id])
+  beneficiaryId  String
+  beneficiary    User             @relation("PayoutBeneficiary", fields: [beneficiaryId], references: [id])
+  bankAccountId  String?
+  amount         Decimal          @db.Decimal(12, 2)
+  status         PayoutItemStatus @default(PENDING)
+  failureReason  String?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  commissions CommissionRecord[]
+  transfer    Transfer?
+
+  @@map("payout_items")
+}
+
+model Transfer {
+  id             String         @id @default(uuid())
+  payoutItemId   String         @unique
+  payoutItem     PayoutItem     @relation(fields: [payoutItemId], references: [id])
+  provider       String
+  providerRef    String?        @unique
+  status         TransferStatus @default(PENDING)
+  idempotencyKey String         @unique
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  @@map("transfers")
+}
+
+model ComplianceCheck {
+  id      String      @id @default(uuid())
+  batchId String
+  batch   PayoutBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  label   String
+  passed  Boolean
+
+  @@map("compliance_checks")
+}
+
+model Wallet {
+  id        String   @id @default(uuid())
+  userId    String   @unique
+  user      User     @relation(fields: [userId], references: [id])
+  /// Cached from the ledger — the ledger is the source of truth.
+  balance   Decimal  @default(0) @db.Decimal(12, 2)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  entries LedgerEntry[]
+
+  @@map("wallets")
+}
+
+/// Append-only double-entry ledger. Never updated or deleted; corrections are
+/// new offsetting entries. Wallet.balance is derived from these.
+model LedgerEntry {
+  id           String     @id @default(uuid())
+  walletId     String
+  wallet       Wallet     @relation(fields: [walletId], references: [id])
+  type         LedgerType
+  amount       Decimal    @db.Decimal(12, 2)
+  source       String
+  sourceId     String?
+  balanceAfter Decimal    @db.Decimal(12, 2)
+  createdAt    DateTime   @default(now())
+
+  @@index([walletId])
+  @@map("ledger_entries")
 }
 
 model CommissionRule {
@@ -428,10 +751,30 @@ model CampaignInfluencerAssignment {
   influencerId String
   influencer   InfluencerProfile @relation(fields: [influencerId], references: [id])
   utmLink      String?
+  promoCode    String?
+  accepted     Boolean           @default(false)
+  clicks       Int               @default(0)
+  conversions  Int               @default(0)
   assignedAt   DateTime          @default(now())
+
+  submissions CampaignSubmission[]
 
   @@unique([campaignId, influencerId])
   @@map("campaign_influencer_assignments")
+}
+
+model CampaignSubmission {
+  id             String                       @id @default(uuid())
+  assignmentId   String
+  assignment     CampaignInfluencerAssignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  postUrl        String
+  hasAdDisclosure Boolean                     @default(false)
+  status         SubmissionStatus             @default(SUBMITTED)
+  reviewerNote   String?
+  submittedAt    DateTime                     @default(now())
+  reviewedAt     DateTime?
+
+  @@map("campaign_submissions")
 }
 
 model PromoCode {
@@ -539,17 +882,22 @@ model WebhookEvent {
   @@map("webhook_events")
 }
 
+/// Immutable trail of money- and status-affecting writes.
+/// actorId is null for automated/system actions.
 model AuditLog {
   id         String   @id @default(uuid())
-  actorId    String
-  actor      User     @relation("AuditActor", fields: [actorId], references: [id])
+  actorId    String?
+  actor      User?    @relation("AuditActor", fields: [actorId], references: [id])
   action     String
   targetType String
   targetId   String?
   before     Json?
   after      Json?
+  ip         String?
   createdAt  DateTime @default(now())
 
+  @@index([targetType, targetId])
+  @@index([actorId])
   @@map("audit_logs")
 }
 

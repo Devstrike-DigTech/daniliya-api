@@ -1,4 +1,14 @@
 {
   "extends": "./tsconfig.json",
-  "exclude": ["node_modules", "test", "dist", "**/*spec.ts"]
+  "exclude": [
+    "node_modules",
+    "test",
+    "dist",
+    "**/*spec.ts",
+    // Kept out of the app build so `src` stays the rootDir and main lands at
+    // dist/main.js (what the Dockerfile CMD and start:prod expect). Both are
+    // run directly as TypeScript by the Prisma CLI / ts-node.
+    "prisma.config.ts",
+    "prisma/**"
+  ]
 }
