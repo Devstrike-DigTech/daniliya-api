@@ -29,6 +29,16 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
     return reply === 'PONG';
   }
 
+  /** Acquire a lock (SET NX EX). Returns true if acquired. */
+  async acquireLock(key: string, ttlSeconds: number): Promise<boolean> {
+    const res = await this.client.set(key, '1', 'EX', ttlSeconds, 'NX');
+    return res === 'OK';
+  }
+
+  async releaseLock(key: string): Promise<void> {
+    await this.client.del(key);
+  }
+
   async get<T>(key: string): Promise<T | null> {
     const value = await this.client.get(key);
     if (value === null) return null;

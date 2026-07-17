@@ -171,6 +171,7 @@ enum TicketStatus {
 enum BeneficiaryType {
   AFFILIATE
   INFLUENCER
+  VENDOR
 }
 
 enum PayoutModel {
@@ -308,6 +309,8 @@ model VendorProfile {
   businessName    String
   productCategory String?
   bankDetailsJson String?
+  /// Platform take-rate in basis points (1000 = 10%). Vendor net = subtotal × (1 − rate).
+  takeRateBps     Int      @default(1000)
   isApproved      Boolean  @default(false)
   approvedAt      DateTime?
   rejectedReason  String?

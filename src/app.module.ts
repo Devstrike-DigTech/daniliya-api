@@ -4,6 +4,7 @@ import { APP_GUARD } from '@nestjs/core';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { ScheduleModule } from '@nestjs/schedule';
 import { validateEnv } from './config/env.validation';
+import { BootstrapService } from './bootstrap/bootstrap.service';
 import { PrismaModule } from './prisma/prisma.module';
 import { RedisModule } from './redis/redis.module';
 import { NotificationsModule } from './notifications/notifications.module';
@@ -61,6 +62,7 @@ import { TrackingModule } from './tracking/tracking.module';
     TrackingModule,
   ],
   providers: [
+    BootstrapService,
     // Order matters: authenticate, then authorize, then rate-limit.
     { provide: APP_GUARD, useClass: JwtAuthGuard },
     { provide: APP_GUARD, useClass: RolesGuard },

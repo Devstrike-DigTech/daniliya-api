@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable, Logger, NotFoundException, UnauthorizedException } from '@nestjs/common';
+import { Cron, CronExpression } from '@nestjs/schedule';
 import {
   BeneficiaryType,
   CommissionStatus,
@@ -15,11 +16,14 @@ import { LedgerService } from '../ledger/ledger.service';
 import { PRICING } from '../config/pricing';
 import { PaystackService } from '../payments/paystack.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { RedisService } from '../redis/redis.service';
 
-const AUDIENCE_TO_TYPE: Record<PayoutAudience, BeneficiaryType | null> = {
+const RUN_LOCK_KEY = 'payouts:run:lock';
+
+const AUDIENCE_TO_TYPE: Record<PayoutAudience, BeneficiaryType> = {
   AFFILIATE: BeneficiaryType.AFFILIATE,
   INFLUENCER: BeneficiaryType.INFLUENCER,
-  VENDOR: null, // vendor payouts accrue differently — out of scope for now
+  VENDOR: BeneficiaryType.VENDOR,
 };
 
 @Injectable()
@@ -32,15 +36,38 @@ export class PayoutsService {
     private readonly ledger: LedgerService,
     private readonly paystack: PaystackService,
     private readonly audit: AuditService,
+    private readonly redis: RedisService,
   ) {}
 
-  /** The weekly run: confirm eligible commissions, then batch by audience. */
+  /** Automated weekly run — Monday 09:00 (server TZ). */
+  @Cron(CronExpression.EVERY_WEEK, { name: 'weekly-payout' })
+  async weeklyRun() {
+    this.logger.log('Weekly payout cron firing');
+    await this.run();
+  }
+
+  /**
+   * The run: confirm eligible commissions, then batch by audience. Guarded by a
+   * Redis lock so a manual trigger and the cron can't batch concurrently.
+   */
   async run(adminId?: string, ip?: string) {
+    const locked = await this.redis.acquireLock(RUN_LOCK_KEY, 120);
+    if (!locked) {
+      throw new BadRequestException('A payout run is already in progress');
+    }
+    try {
+      return await this.doRun(adminId, ip);
+    } finally {
+      await this.redis.releaseLock(RUN_LOCK_KEY);
+    }
+  }
+
+  private async doRun(adminId?: string, ip?: string) {
     const confirmed = await this.commissions.confirmEligible();
     const batches: { ref: string; audience: PayoutAudience; recipients: number; total: string }[] = [];
 
-    for (const audience of [PayoutAudience.AFFILIATE, PayoutAudience.INFLUENCER]) {
-      const type = AUDIENCE_TO_TYPE[audience]!;
+    for (const audience of [PayoutAudience.AFFILIATE, PayoutAudience.INFLUENCER, PayoutAudience.VENDOR]) {
+      const type = AUDIENCE_TO_TYPE[audience];
       const eligible = await this.prisma.commissionRecord.findMany({
         where: { status: CommissionStatus.CONFIRMED, beneficiaryType: type, payoutItemId: null },
       });

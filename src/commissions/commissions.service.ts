@@ -35,6 +35,37 @@ export class CommissionsService {
 
     await this.accrueAffiliate(order);
     await this.accrueInfluencer(order);
+    await this.accrueVendors(orderId);
+  }
+
+  /**
+   * Vendor net per order: each vendor is paid their items' total minus the
+   * platform take-rate. Platform-owned products (no vendorId) accrue nothing.
+   */
+  private async accrueVendors(orderId: string) {
+    const items = await this.prisma.orderItem.findMany({
+      where: { orderId },
+      include: { product: { select: { vendorId: true } } },
+    });
+
+    // Sum item totals per vendor profile.
+    const byVendor = new Map<string, Prisma.Decimal>();
+    for (const it of items) {
+      const vid = it.product.vendorId;
+      if (!vid) continue;
+      byVendor.set(vid, (byVendor.get(vid) ?? new Prisma.Decimal(0)).plus(it.totalPrice));
+    }
+    if (byVendor.size === 0) return;
+
+    for (const [vendorId, gross] of byVendor) {
+      const vendor = await this.prisma.vendorProfile.findUnique({ where: { id: vendorId } });
+      if (!vendor) continue;
+      const keepBps = 10000 - vendor.takeRateBps;
+      const net = gross.times(keepBps).dividedBy(10000);
+      if (net.lte(0)) continue;
+      await this.upsertCommission(orderId, vendor.userId, BeneficiaryType.VENDOR, net);
+    }
+    this.logger.log(`Vendor commissions accrued for order ${orderId}`);
   }
 
   private async accrueAffiliate(order: { id: string; affiliateCode: string | null }) {
