@@ -5,6 +5,7 @@ import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { ScheduleModule } from '@nestjs/schedule';
 import { validateEnv } from './config/env.validation';
 import { BootstrapService } from './bootstrap/bootstrap.service';
+import { PlatformConfigModule } from './config/platform-config.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { RedisModule } from './redis/redis.module';
 import { NotificationsModule } from './notifications/notifications.module';
@@ -39,6 +40,7 @@ import { TrackingModule } from './tracking/tracking.module';
     ThrottlerModule.forRoot([{ ttl: 60000, limit: 100 }]),
     PrismaModule,
     RedisModule,
+    PlatformConfigModule,
     NotificationsModule,
     AuditModule,
     HealthModule,

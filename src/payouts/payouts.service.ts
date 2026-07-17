@@ -13,7 +13,7 @@ import { randomBytes } from 'crypto';
 import { AuditService } from '../audit/audit.service';
 import { CommissionsService } from '../commissions/commissions.service';
 import { LedgerService } from '../ledger/ledger.service';
-import { PRICING } from '../config/pricing';
+import { PlatformConfigService } from '../config/platform-config.service';
 import { PaystackService } from '../payments/paystack.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
@@ -37,6 +37,7 @@ export class PayoutsService {
     private readonly paystack: PaystackService,
     private readonly audit: AuditService,
     private readonly redis: RedisService,
+    private readonly config: PlatformConfigService,
   ) {}
 
   /** Automated weekly run — Monday 09:00 (server TZ). */
@@ -85,7 +86,7 @@ export class PayoutsService {
       // Keep only those over the minimum with a bank account on file.
       const includable: { userId: string; amount: Prisma.Decimal; ids: string[]; bankAccountId: string | null }[] = [];
       for (const [userId, g] of byUser) {
-        if (g.amount.lessThan(PRICING.MIN_PAYOUT)) continue; // rolls over
+        if (g.amount.lessThan(this.config.getDecimal('MIN_PAYOUT'))) continue; // rolls over
         const bank = await this.prisma.bankAccount.findFirst({
           where: { userId },
           orderBy: { isDefault: 'desc' },

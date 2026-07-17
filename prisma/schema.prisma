@@ -947,6 +947,14 @@ model SupportTicket {
   @@map("support_tickets")
 }
 
+/// Finance-tunable platform settings (fees, min payout, take-rate). Key/value
+/// so finance can adjust pricing without a deploy. Cached in memory by the app.
+model PlatformConfig {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt
+}
+
 model TicketMessage {
   id        String        @id @default(uuid())
   ticketId  String

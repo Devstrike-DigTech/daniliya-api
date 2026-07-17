@@ -1,11 +1,12 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Param, Post, Query, Req } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, HttpStatus, Param, Patch, Post, Query, Req } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { ProductStatus } from '@prisma/client';
 import type { Request } from 'express';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Role, Roles } from '../common/decorators/roles.decorator';
+import { PlatformConfigService } from '../config/platform-config.service';
 import { AdminService } from './admin.service';
-import { RejectProductDto } from './dto/admin.dto';
+import { RejectProductDto, UpdateConfigDto } from './dto/admin.dto';
 
 const ipOf = (req: Request) => req.ip ?? undefined;
 
@@ -14,7 +15,22 @@ const ipOf = (req: Request) => req.ip ?? undefined;
 @Roles(Role.ADMIN)
 @Controller('admin')
 export class AdminController {
-  constructor(private readonly admin: AdminService) {}
+  constructor(
+    private readonly admin: AdminService,
+    private readonly config: PlatformConfigService,
+  ) {}
+
+  @Get('settings/config')
+  @ApiOperation({ summary: 'Platform config (fees, take-rate, min payout)' })
+  getConfig() {
+    return this.config.all();
+  }
+
+  @Patch('settings/config')
+  @ApiOperation({ summary: 'Update platform config (numeric values only)' })
+  async updateConfig(@Body() dto: UpdateConfigDto) {
+    return { updated: await this.config.update(dto.values) };
+  }
 
   @Get('overview')
   @ApiOperation({ summary: 'Command centre — GMV, orders, users, pending payouts, attribution' })

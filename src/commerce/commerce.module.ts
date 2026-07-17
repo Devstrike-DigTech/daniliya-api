@@ -8,10 +8,12 @@ import { OrdersService } from './orders/orders.service';
 import { PricingService } from './pricing.service';
 import { ProductsController } from './products/products.controller';
 import { ProductsService } from './products/products.service';
+import { VendorProductsController } from './products/vendor-products.controller';
+import { VendorProductsService } from './products/vendor-products.service';
 
 @Module({
-  controllers: [ProductsController, CartController, OrdersController, AdminOrdersController],
-  providers: [ProductsService, CartService, OrdersService, AdminOrdersService, PricingService],
+  controllers: [ProductsController, VendorProductsController, CartController, OrdersController, AdminOrdersController],
+  providers: [ProductsService, VendorProductsService, CartService, OrdersService, AdminOrdersService, PricingService],
   exports: [PricingService],
 })
 export class CommerceModule {}

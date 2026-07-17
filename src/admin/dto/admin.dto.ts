@@ -1,6 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { AdminRole, AffiliateTier, TicketPriority } from '@prisma/client';
-import { IsEmail, IsEnum, IsNotEmpty, IsOptional, IsString, MaxLength } from 'class-validator';
+import { IsEmail, IsEnum, IsNotEmpty, IsObject, IsOptional, IsString, MaxLength } from 'class-validator';
 
 export class ChangeTierDto {
   @ApiProperty({ enum: AffiliateTier })
@@ -85,4 +85,13 @@ export class TicketReplyDto {
   @IsNotEmpty()
   @MaxLength(2000)
   body!: string;
+}
+
+export class UpdateConfigDto {
+  @ApiProperty({
+    description: 'Config key → numeric value, e.g. { "DELIVERY_FEE": "9000.00" }',
+    example: { DELIVERY_FEE: '9000.00' },
+  })
+  @IsObject()
+  values!: Record<string, string>;
 }

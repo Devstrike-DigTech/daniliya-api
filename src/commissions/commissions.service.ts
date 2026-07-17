@@ -7,7 +7,7 @@ import {
   PayoutModel,
   SubmissionStatus,
 } from '@prisma/client';
-import { PRICING } from '../config/pricing';
+import { PlatformConfigService } from '../config/platform-config.service';
 import { LedgerService } from '../ledger/ledger.service';
 import { PrismaService } from '../prisma/prisma.service';
 
@@ -27,6 +27,7 @@ export class CommissionsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly ledger: LedgerService,
+    private readonly config: PlatformConfigService,
   ) {}
 
   async accrueForOrder(orderId: string): Promise<void> {
@@ -80,7 +81,7 @@ export class CommissionsService {
       order.id,
       affiliate.userId,
       BeneficiaryType.AFFILIATE,
-      PRICING.AFFILIATE_COMMISSION,
+      this.config.getDecimal('AFFILIATE_COMMISSION'),
     );
     this.logger.log(`Affiliate commission accrued for order ${order.id}`);
   }
