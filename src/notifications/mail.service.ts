@@ -50,6 +50,16 @@ export class MailService {
     });
   }
 
+  /** Generic notice — used by admin "message user" and invites. */
+  async sendNotice(to: string, subject: string, body: string): Promise<void> {
+    await this.send({
+      to,
+      subject,
+      html: `<p>${body.replace(/\n/g, '<br/>')}</p>`,
+      devPreview: `Notice to ${to} — ${subject}`,
+    });
+  }
+
   private async send(opts: {
     to: string;
     subject: string;
