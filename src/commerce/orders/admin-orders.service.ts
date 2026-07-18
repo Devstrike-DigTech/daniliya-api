@@ -15,7 +15,10 @@ export class AdminOrdersService {
   async list(status?: OrderStatus) {
     const orders = await this.prisma.order.findMany({
       where: status ? { status } : undefined,
-      include: { payment: true },
+      include: {
+        payment: true,
+        customer: { select: { firstName: true, lastName: true } },
+      },
       orderBy: { createdAt: 'desc' },
       take: 100,
     });
@@ -23,6 +26,7 @@ export class AdminOrdersService {
       ref: o.ref,
       status: o.status,
       channel: o.channel,
+      customer: `${o.customer.firstName} ${o.customer.lastName}`,
       total: o.total,
       payment: o.payment ? { method: o.payment.method, status: o.payment.status } : null,
       createdAt: o.createdAt,
