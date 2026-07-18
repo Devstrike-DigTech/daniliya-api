@@ -44,20 +44,37 @@ export class AuthService {
     const email = this.normalizeEmail(dto.email);
 
     const existing = await this.prisma.user.findUnique({ where: { email } });
-    if (existing) {
+
+    // A GUEST row is a buyer who checked out without registering. It holds their
+    // orders but has no password, so registering with the same email claims it
+    // in place — the history carries over instead of being orphaned.
+    const claiming = existing !== null && existing.password === null;
+    if (existing && !claiming) {
       throw new ConflictException('An account with this email already exists');
     }
 
-    const user = await this.prisma.user.create({
-      data: {
-        email,
-        phone: dto.phone,
-        firstName: dto.firstName,
-        lastName: dto.lastName,
-        password: await bcrypt.hash(dto.password, BCRYPT_ROUNDS),
-        status: UserStatus.PENDING_VERIFICATION,
-      },
-    });
+    const password = await bcrypt.hash(dto.password, BCRYPT_ROUNDS);
+    const user = claiming
+      ? await this.prisma.user.update({
+          where: { id: existing!.id },
+          data: {
+            phone: dto.phone,
+            firstName: dto.firstName,
+            lastName: dto.lastName,
+            password,
+            status: UserStatus.PENDING_VERIFICATION,
+          },
+        })
+      : await this.prisma.user.create({
+          data: {
+            email,
+            phone: dto.phone,
+            firstName: dto.firstName,
+            lastName: dto.lastName,
+            password,
+            status: UserStatus.PENDING_VERIFICATION,
+          },
+        });
 
     await this.sendOtp(user);
 
@@ -65,7 +82,10 @@ export class AuthService {
       id: user.id,
       email: user.email,
       status: user.status,
-      message: 'Account created. Check your email for a 6-digit code.',
+      claimedGuestOrders: claiming,
+      message: claiming
+        ? 'Account created. Your previous orders are now linked — check your email for a 6-digit code.'
+        : 'Account created. Check your email for a 6-digit code.',
     };
   }
 

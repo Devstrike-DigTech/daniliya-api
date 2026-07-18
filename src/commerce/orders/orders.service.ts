@@ -11,13 +11,35 @@ import {
   PaymentStatus,
   Prisma,
   ProductStatus,
+  UserRole,
+  UserStatus,
 } from '@prisma/client';
 import { randomBytes } from 'crypto';
 import { CommissionsService } from '../../commissions/commissions.service';
 import { PaystackService } from '../../payments/paystack.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { PricingService } from '../pricing.service';
-import { PlaceOrderDto, QuoteDto } from './dto/orders.dto';
+import {
+  ContactDto,
+  GuestItemDto,
+  GuestQuoteDto,
+  PlaceGuestOrderDto,
+  PlaceOrderDto,
+  QuoteDto,
+} from './dto/orders.dto';
+
+/**
+ * A priced line, however it was sourced — a server-side cart for signed-in
+ * buyers, or the request body for guests. Both paths converge here so pricing
+ * and stock rules can never diverge between them.
+ */
+type ResolvedItem = {
+  productId: string;
+  quantity: number;
+  giftWrap: boolean;
+  giftMeta?: Prisma.JsonValue | null;
+  product: { id: string; title: string; price: Prisma.Decimal; status: ProductStatus; stockQuantity: number };
+};
 
 @Injectable()
 export class OrdersService {
@@ -40,13 +62,42 @@ export class OrdersService {
     return { mode: dto.mode, ...breakdown };
   }
 
+  /** Same totals as `quote`, for a guest whose cart lives in the browser. */
+  async guestQuote(dto: GuestQuoteDto) {
+    const items = await this.loadGuestItems(dto.items);
+    const breakdown = this.pricing.quote(
+      items.map((i) => ({ unitPrice: i.product.price, quantity: i.quantity, giftWrap: i.giftWrap })),
+      dto.mode,
+    );
+    return { mode: dto.mode, ...breakdown };
+  }
+
   async place(userId: string, dto: PlaceOrderDto) {
+    const items = await this.loadCartItems(userId);
+    if (items.length === 0) throw new BadRequestException('Your cart is empty');
+    return this.placeCore(userId, items, dto, { clearCartFor: userId });
+  }
+
+  /**
+   * Checkout without an account. The order is attached to a passwordless GUEST
+   * user keyed by the contact email, so registering with that same address
+   * later claims the full order history — see AuthService.register.
+   */
+  async placeGuest(dto: PlaceGuestOrderDto) {
+    const items = await this.loadGuestItems(dto.items);
+    const customerId = await this.resolveGuestCustomer(dto.contact);
+    return this.placeCore(customerId, items, dto, {});
+  }
+
+  private async placeCore(
+    userId: string,
+    items: ResolvedItem[],
+    dto: PlaceOrderDto,
+    opts: { clearCartFor?: string },
+  ) {
     if (dto.mode === FulfilmentMode.DELIVERY && !dto.deliveryAddress) {
       throw new BadRequestException('A delivery address is required for delivery orders');
     }
-
-    const items = await this.loadCartItems(userId);
-    if (items.length === 0) throw new BadRequestException('Your cart is empty');
 
     for (const it of items) {
       if (it.product.status !== ProductStatus.ACTIVE) {
@@ -117,9 +168,10 @@ export class OrdersService {
       }
 
       // POD: order is confirmed now, so the cart can be cleared. Card orders keep
-      // the cart until the webhook confirms payment.
-      if (isPod) {
-        await tx.cartItem.deleteMany({ where: { cart: { userId } } });
+      // the cart until the webhook confirms payment. Guests have no server-side
+      // cart, so there is nothing to clear for them.
+      if (isPod && opts.clearCartFor) {
+        await tx.cartItem.deleteMany({ where: { cart: { userId: opts.clearCartFor } } });
       }
 
       return created;
@@ -200,12 +252,61 @@ export class OrdersService {
 
   // ── Internals ─────────────────────────────────────────────────────────
 
-  private async loadCartItems(userId: string) {
+  private async loadCartItems(userId: string): Promise<ResolvedItem[]> {
     const cart = await this.prisma.cart.findUnique({
       where: { userId },
       include: { items: { include: { product: true }, orderBy: { id: 'asc' } } },
     });
     return cart?.items ?? [];
+  }
+
+  /**
+   * Turn client-supplied lines into priced items. Quantities come from the
+   * request; prices and availability are always re-read from the database, so
+   * a tampered payload cannot change what the buyer is charged.
+   */
+  private async loadGuestItems(lines: GuestItemDto[]): Promise<ResolvedItem[]> {
+    const ids = [...new Set(lines.map((l) => l.productId))];
+    const products = await this.prisma.product.findMany({ where: { id: { in: ids } } });
+    const byId = new Map(products.map((p) => [p.id, p]));
+
+    return lines.map((line) => {
+      const product = byId.get(line.productId);
+      if (!product) throw new BadRequestException('One of the items is no longer available');
+      return {
+        productId: product.id,
+        quantity: line.quantity,
+        giftWrap: line.giftWrap ?? false,
+        giftMeta: null,
+        product,
+      };
+    });
+  }
+
+  /**
+   * Find or create the User a guest order belongs to. An existing account with
+   * the same email is reused, so the order shows up in that buyer's history;
+   * otherwise a passwordless GUEST row is created for them to claim later.
+   * Phone is deliberately left off the row (it is unique on User and would
+   * collide) — it lives in the order's contact JSON.
+   */
+  private async resolveGuestCustomer(contact: ContactDto): Promise<string> {
+    const email = contact.email.trim().toLowerCase();
+
+    const existing = await this.prisma.user.findUnique({ where: { email } });
+    if (existing) return existing.id;
+
+    const [firstName, ...rest] = contact.fullName.trim().split(/\s+/);
+    const created = await this.prisma.user.create({
+      data: {
+        email,
+        firstName: firstName || 'Guest',
+        lastName: rest.join(' ') || '—',
+        role: UserRole.CUSTOMER,
+        status: UserStatus.GUEST,
+      },
+    });
+    return created.id;
   }
 
   private channelFor(dto: PlaceOrderDto): OrderChannel {

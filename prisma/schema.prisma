@@ -28,6 +28,9 @@ enum UserStatus {
   PENDING_VERIFICATION
   ACTIVE
   SUSPENDED
+  /// Checked out without registering. Passwordless: holds orders so the buyer
+  /// can claim them later by registering with the same email.
+  GUEST
 }
 
 enum KycStatus {
