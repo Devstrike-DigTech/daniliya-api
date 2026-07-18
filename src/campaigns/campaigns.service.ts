@@ -208,7 +208,7 @@ export class CampaignsService {
   }
 
   async accept(userId: string, campaignId: string) {
-    const assignment = await this.myAssignment(userId, campaignId);
+    const assignment = await this.myAssignment(userId, campaignId, true);
     await this.prisma.campaignInfluencerAssignment.update({
       where: { id: assignment.id },
       data: { accepted: true },
@@ -217,7 +217,7 @@ export class CampaignsService {
   }
 
   async submitPost(userId: string, campaignId: string, dto: SubmitPostDto) {
-    const assignment = await this.myAssignment(userId, campaignId);
+    const assignment = await this.myAssignment(userId, campaignId, true);
     if (!assignment.accepted) {
       throw new BadRequestException('Accept the campaign brief before submitting a post');
     }
@@ -259,12 +259,29 @@ export class CampaignsService {
     return influencer;
   }
 
-  private async myAssignment(userId: string, campaignId: string) {
+  /**
+   * The creator's assignment on a campaign.
+   *
+   * `requireLive` guards the write paths: a paused or ended campaign must not
+   * take a new acceptance or post submission. Enforced here rather than in each
+   * caller so accept() and submitPost() cannot drift apart, and because a portal
+   * -side check is trivially bypassed by calling the API directly.
+   */
+  private async myAssignment(userId: string, campaignId: string, requireLive = false) {
     const influencer = await this.influencerOrThrow(userId);
     const assignment = await this.prisma.campaignInfluencerAssignment.findUnique({
       where: { campaignId_influencerId: { campaignId, influencerId: influencer.id } },
+      include: { campaign: { select: { status: true } } },
     });
     if (!assignment) throw new NotFoundException('You are not assigned to this campaign');
+
+    if (requireLive && assignment.campaign.status !== CampaignStatus.ACTIVE) {
+      throw new BadRequestException(
+        assignment.campaign.status === CampaignStatus.PAUSED
+          ? 'This campaign is paused'
+          : 'This campaign has ended',
+      );
+    }
     return assignment;
   }
 
