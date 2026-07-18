@@ -66,10 +66,15 @@ export class PaystackBanksService {
       const { data } = await this.http.get('/bank', {
         params: { country: 'nigeria', perPage: 100 },
       });
-      return (data.data as Array<{ name: string; code: string }>).map((b) => ({
-        name: b.name,
-        code: b.code,
-      }));
+      // Paystack's list genuinely repeats some sort codes across institutions
+      // (e.g. 057, 50572). A payout selector keys on the code, so duplicates
+      // are useless here and crash React lists that key on it. Collapse to one
+      // entry per code, first occurrence winning.
+      const seen = new Map<string, BankOption>();
+      for (const b of data.data as Array<{ name: string; code: string }>) {
+        if (!seen.has(b.code)) seen.set(b.code, { name: b.name, code: b.code });
+      }
+      return [...seen.values()];
     } catch (err) {
       this.logger.error('Paystack bank list failed', err as Error);
       throw new ServiceUnavailableException('Could not load banks right now');

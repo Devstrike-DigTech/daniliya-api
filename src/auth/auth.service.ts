@@ -53,6 +53,19 @@ export class AuthService {
       throw new ConflictException('An account with this email already exists');
     }
 
+    // Phone is unique too. Without this check the insert fails on the database
+    // constraint and Prisma's P2002 escapes as a bare 500, which tells the
+    // person signing up nothing at all.
+    if (dto.phone) {
+      const phoneTaken = await this.prisma.user.findFirst({
+        where: { phone: dto.phone, ...(existing ? { id: { not: existing.id } } : {}) },
+        select: { id: true },
+      });
+      if (phoneTaken) {
+        throw new ConflictException('An account with this phone number already exists');
+      }
+    }
+
     const password = await bcrypt.hash(dto.password, BCRYPT_ROUNDS);
     const user = claiming
       ? await this.prisma.user.update({
