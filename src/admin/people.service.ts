@@ -62,6 +62,17 @@ export class AdminPeopleService {
     });
   }
 
+  async influencer(id: string) {
+    const p = await this.prisma.influencerProfile.findUnique({
+      where: { id },
+      include: {
+        user: { select: { id: true, firstName: true, lastName: true, email: true, phone: true, status: true } },
+      },
+    });
+    if (!p) throw new NotFoundException('Influencer not found');
+    return p;
+  }
+
   approveInfluencer(id: string, adminId: string, ip?: string) {
     return this.decideInfluencer(id, true, undefined, adminId, ip);
   }
@@ -95,6 +106,18 @@ export class AdminPeopleService {
       include: { user: { select: { firstName: true, lastName: true, email: true, status: true } } },
       orderBy: { createdAt: 'desc' },
     });
+  }
+
+  async vendor(id: string) {
+    const p = await this.prisma.vendorProfile.findUnique({
+      where: { id },
+      include: {
+        user: { select: { id: true, firstName: true, lastName: true, email: true, phone: true, status: true } },
+        _count: { select: { products: true, reviews: true } },
+      },
+    });
+    if (!p) throw new NotFoundException('Vendor not found');
+    return p;
   }
 
   approveVendor(id: string, adminId: string, ip?: string) {

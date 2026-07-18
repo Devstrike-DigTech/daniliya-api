@@ -36,6 +36,10 @@ export class AdminPeopleController {
   influencers(@Query('q') q?: string) {
     return this.people.influencers(q);
   }
+  @Get('influencers/:id')
+  influencer(@Param('id') id: string) {
+    return this.people.influencer(id);
+  }
   @Post('influencers/:id/approve')
   @HttpCode(HttpStatus.OK)
   approveInf(@Param('id') id: string, @CurrentUser('id') a: string, @Req() r: Request) {
@@ -51,6 +55,10 @@ export class AdminPeopleController {
   @Get('vendors')
   vendors(@Query('q') q?: string) {
     return this.people.vendors(q);
+  }
+  @Get('vendors/:id')
+  vendor(@Param('id') id: string) {
+    return this.people.vendor(id);
   }
   @Post('vendors/:id/approve')
   @HttpCode(HttpStatus.OK)
