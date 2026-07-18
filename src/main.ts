@@ -17,8 +17,15 @@ async function bootstrap() {
 
   app.use(helmet());
 
+  // CORS_ORIGIN is a comma-separated list — the five portals run on their own
+  // ports locally (3000 web, 3001 affiliate, 3002 influencer, 3003 vendor,
+  // 3004 admin) and on their own domains in production.
+  const origins = (configService.get<string>('CORS_ORIGIN') ?? '')
+    .split(',')
+    .map((o) => o.trim())
+    .filter(Boolean);
   app.enableCors({
-    origin: configService.get('CORS_ORIGIN'),
+    origin: origins.length === 1 ? origins[0] : origins,
     credentials: true,
   });
 
