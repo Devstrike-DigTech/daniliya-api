@@ -61,6 +61,11 @@ export class AdminController {
   products(@Query('status') status?: ProductStatus, @Query('q') q?: string) {
     return this.admin.products(status, q);
   }
+  @Get('products/:id')
+  @ApiOperation({ summary: 'Product detail (any status)' })
+  product(@Param('id') id: string) {
+    return this.admin.product(id);
+  }
   @Post('products/:id/approve')
   @HttpCode(HttpStatus.OK)
   approve(@Param('id') id: string, @CurrentUser('id') a: string, @Req() r: Request) {

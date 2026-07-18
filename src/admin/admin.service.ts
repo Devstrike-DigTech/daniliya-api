@@ -25,6 +25,19 @@ export class AdminService {
     });
   }
 
+  async product(id: string) {
+    const product = await this.prisma.product.findUnique({
+      where: { id },
+      include: {
+        vendor: { select: { id: true, businessName: true } },
+        images: { orderBy: { sortOrder: 'asc' } },
+        _count: { select: { orderItems: true, reviews: true } },
+      },
+    });
+    if (!product) throw new NotFoundException('Product not found');
+    return product;
+  }
+
   async approveProduct(id: string, adminId: string, ip?: string) {
     return this.moderateProduct(id, ProductStatus.ACTIVE, undefined, adminId, ip);
   }
