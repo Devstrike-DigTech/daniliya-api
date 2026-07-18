@@ -21,6 +21,12 @@ export class AdminOrdersController {
     return this.orders.list(status);
   }
 
+  @Get(':ref')
+  @ApiOperation({ summary: 'Order detail' })
+  byRef(@Param('ref') ref: string) {
+    return this.orders.byRef(ref);
+  }
+
   @Post(':ref/refund')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Refund an order — voids commissions, restores stock' })

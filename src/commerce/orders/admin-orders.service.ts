@@ -33,6 +33,69 @@ export class AdminOrdersService {
     }));
   }
 
+  /** Full order detail for the admin order page. */
+  async byRef(ref: string) {
+    const o = await this.prisma.order.findUnique({
+      where: { ref },
+      include: {
+        payment: true,
+        customer: { select: { firstName: true, lastName: true, email: true, phone: true } },
+        items: {
+          include: {
+            product: { select: { id: true, vendor: { select: { businessName: true } } } },
+          },
+        },
+      },
+    });
+    if (!o) throw new NotFoundException('Order not found');
+
+    return {
+      ref: o.ref,
+      status: o.status,
+      channel: o.channel,
+      fulfilmentMode: o.fulfilmentMode,
+      customer: {
+        name: `${o.customer.firstName} ${o.customer.lastName}`,
+        email: o.customer.email,
+        phone: o.customer.phone,
+      },
+      subtotal: o.subtotal,
+      giftAddon: o.giftAddon,
+      deliveryFee: o.deliveryFee,
+      tax: o.tax,
+      total: o.total,
+      deliveryAddress: o.deliveryAddress,
+      contact: o.contact,
+      notes: o.notes,
+      affiliateCode: o.affiliateCode,
+      influencerCode: o.influencerCode,
+      promoCode: o.promoCode,
+      payment: o.payment
+        ? {
+            method: o.payment.method,
+            status: o.payment.status,
+            providerRef: o.payment.providerRef,
+            paidAt: o.payment.paidAt,
+          }
+        : null,
+      items: o.items.map((it) => ({
+        id: it.id,
+        productId: it.productId,
+        titleSnapshot: it.titleSnapshot,
+        quantity: it.quantity,
+        unitPrice: it.unitPrice,
+        totalPrice: it.totalPrice,
+        giftWrap: it.giftWrap,
+        vendor: it.product.vendor?.businessName ?? null,
+      })),
+      confirmedAt: o.confirmedAt,
+      shippedAt: o.shippedAt,
+      deliveredAt: o.deliveredAt,
+      cancelledAt: o.cancelledAt,
+      createdAt: o.createdAt,
+    };
+  }
+
   refund(ref: string, adminId: string, ip?: string) {
     return this.reverse(ref, OrderStatus.REFUNDED, adminId, ip);
   }
