@@ -1,4 +1,8 @@
-import { Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import axios, { AxiosInstance } from 'axios';
 import { NIGERIAN_BANKS } from './nigerian-banks';
@@ -111,7 +115,9 @@ export class PaystackBanksService {
       }
 
       this.logger.error('Paystack resolve failed', err as Error);
-      throw new ServiceUnavailableException('Could not verify the account right now');
+      throw new ServiceUnavailableException(
+        'Could not verify the account right now',
+      );
     }
   }
 

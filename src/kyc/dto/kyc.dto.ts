@@ -10,7 +10,7 @@ export const GOV_ID_TYPES = [
 
 export class SubmitKycDto {
   @ApiProperty({ enum: GOV_ID_TYPES, example: 'NIN slip' })
-  @IsIn(GOV_ID_TYPES as unknown as string[])
+  @IsIn(GOV_ID_TYPES)
   govIdType!: string;
 
   @ApiProperty({ example: 'https://res.cloudinary.com/…/gov-id.jpg' })
@@ -18,7 +18,8 @@ export class SubmitKycDto {
   govIdUrl!: string;
 
   @ApiProperty({
-    description: 'Payout account to verify against (from POST /me/bank-accounts)',
+    description:
+      'Payout account to verify against (from POST /me/bank-accounts)',
   })
   @IsString()
   @IsNotEmpty()

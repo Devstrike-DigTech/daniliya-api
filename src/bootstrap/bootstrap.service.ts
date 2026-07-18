@@ -30,8 +30,13 @@ export class BootstrapService implements OnApplicationBootstrap {
     if (existing) {
       if (!existing.adminProfile) {
         await this.prisma.$transaction([
-          this.prisma.user.update({ where: { id: existing.id }, data: { role: UserRole.ADMIN } }),
-          this.prisma.adminProfile.create({ data: { userId: existing.id, role: AdminRole.SUPERADMIN } }),
+          this.prisma.user.update({
+            where: { id: existing.id },
+            data: { role: UserRole.ADMIN },
+          }),
+          this.prisma.adminProfile.create({
+            data: { userId: existing.id, role: AdminRole.SUPERADMIN },
+          }),
         ]);
         this.logger.log(`Promoted ${email} to SUPERADMIN`);
       }

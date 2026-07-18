@@ -1,4 +1,13 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Param, Post, Req } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Param,
+  Post,
+  Req,
+} from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import type { Request } from 'express';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
@@ -44,7 +53,10 @@ export class OnboardingController {
   @Post('tutorial/:stepId/complete')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Mark a lesson complete' })
-  completeStep(@CurrentUser('id') userId: string, @Param('stepId') stepId: string) {
+  completeStep(
+    @CurrentUser('id') userId: string,
+    @Param('stepId') stepId: string,
+  ) {
     return this.onboarding.completeStep(userId, stepId);
   }
 
@@ -58,7 +70,9 @@ export class OnboardingController {
 
   @Post('assessment/submit')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Submit answers — graded server-side (60% to pass)' })
+  @ApiOperation({
+    summary: 'Submit answers — graded server-side (60% to pass)',
+  })
   submitAssessment(
     @CurrentUser('id') userId: string,
     @Body() dto: SubmitAssessmentDto,
@@ -69,7 +83,9 @@ export class OnboardingController {
 
   @Post('influencer')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Submit creator application (goes to admin review)' })
+  @ApiOperation({
+    summary: 'Submit creator application (goes to admin review)',
+  })
   applyInfluencer(
     @CurrentUser('id') userId: string,
     @Body() dto: InfluencerApplicationDto,

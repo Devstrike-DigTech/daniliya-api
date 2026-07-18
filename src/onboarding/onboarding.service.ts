@@ -44,7 +44,11 @@ export class OnboardingService {
   async selectRole(userId: string, role: SelectableRole, ip?: string) {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
-      include: { affiliateProfile: true, influencerProfile: true, vendorProfile: true },
+      include: {
+        affiliateProfile: true,
+        influencerProfile: true,
+        vendorProfile: true,
+      },
     });
     if (!user) throw new NotFoundException('User not found');
 
@@ -53,13 +57,18 @@ export class OnboardingService {
     }
 
     await this.prisma.$transaction(async (tx) => {
-      await tx.user.update({ where: { id: userId }, data: { role: role as UserRole } });
+      await tx.user.update({
+        where: { id: userId },
+        data: { role: role },
+      });
 
       if (role === 'AFFILIATE' && !user.affiliateProfile) {
         await tx.affiliateProfile.create({ data: { userId } });
       }
       if (role === 'INFLUENCER' && !user.influencerProfile) {
-        await tx.influencerProfile.create({ data: { userId, socialHandles: {} } });
+        await tx.influencerProfile.create({
+          data: { userId, socialHandles: {} },
+        });
       }
       if (role === 'VENDOR' && !user.vendorProfile) {
         await tx.vendorProfile.create({ data: { userId, businessName: '' } });
@@ -109,7 +118,12 @@ export class OnboardingService {
       const p = user.affiliateProfile;
       return {
         ...base,
-        step: this.affiliateStep(kycStatus, tutorial.completed, p?.assessmentPassed ?? false, attempts),
+        step: this.affiliateStep(
+          kycStatus,
+          tutorial.completed,
+          p?.assessmentPassed ?? false,
+          attempts,
+        ),
         tutorial,
         assessment: {
           passed: p?.assessmentPassed ?? false,
@@ -126,7 +140,11 @@ export class OnboardingService {
       const p = user.influencerProfile;
       return {
         ...base,
-        step: p?.isApproved ? 'approved' : p?.rejectedReason ? 'rejected' : 'review',
+        step: p?.isApproved
+          ? 'approved'
+          : p?.rejectedReason
+            ? 'rejected'
+            : 'review',
         approved: p?.isApproved ?? false,
         rejectedReason: p?.rejectedReason ?? null,
         code: p?.influencerCode ?? null,
@@ -137,7 +155,11 @@ export class OnboardingService {
       const p = user.vendorProfile;
       return {
         ...base,
-        step: p?.isApproved ? 'approved' : p?.rejectedReason ? 'rejected' : 'review',
+        step: p?.isApproved
+          ? 'approved'
+          : p?.rejectedReason
+            ? 'rejected'
+            : 'review',
         approved: p?.isApproved ?? false,
         rejectedReason: p?.rejectedReason ?? null,
       };
@@ -188,8 +210,11 @@ export class OnboardingService {
   async completeStep(userId: string, stepId: string) {
     const profile = await this.affiliateOrThrow(userId);
 
-    const step = await this.prisma.tutorialStep.findUnique({ where: { id: stepId } });
-    if (!step || !step.isPublished) throw new NotFoundException('Lesson not found');
+    const step = await this.prisma.tutorialStep.findUnique({
+      where: { id: stepId },
+    });
+    if (!step || !step.isPublished)
+      throw new NotFoundException('Lesson not found');
 
     await this.prisma.affiliateTutorialProgress.upsert({
       where: { affiliateId_stepId: { affiliateId: profile.id, stepId } },
@@ -209,12 +234,16 @@ export class OnboardingService {
   }
 
   private async tutorialProgress(userId: string) {
-    const profile = await this.prisma.affiliateProfile.findUnique({ where: { userId } });
+    const profile = await this.prisma.affiliateProfile.findUnique({
+      where: { userId },
+    });
     if (!profile) return { total: 0, done: 0, completed: false };
 
     const [total, done] = await Promise.all([
       this.prisma.tutorialStep.count({ where: { isPublished: true } }),
-      this.prisma.affiliateTutorialProgress.count({ where: { affiliateId: profile.id } }),
+      this.prisma.affiliateTutorialProgress.count({
+        where: { affiliateId: profile.id },
+      }),
     ]);
 
     return { total, done, completed: total > 0 && done >= total };
@@ -230,12 +259,16 @@ export class OnboardingService {
       throw new BadRequestException('You have already passed the assessment');
     }
     if (!(await this.tutorialProgress(userId)).completed) {
-      throw new BadRequestException('Finish the tutorial before taking the assessment');
+      throw new BadRequestException(
+        'Finish the tutorial before taking the assessment',
+      );
     }
 
     const attempts = await this.attemptCount(userId);
     if (attempts >= ASSESSMENT_MAX_ATTEMPTS) {
-      throw new ForbiddenException('You have used all your attempts. Contact support.');
+      throw new ForbiddenException(
+        'You have used all your attempts. Contact support.',
+      );
     }
 
     const questions = await this.prisma.assessmentQuestion.findMany({
@@ -266,15 +299,23 @@ export class OnboardingService {
     };
   }
 
-  async submitAssessment(userId: string, dto: SubmitAssessmentDto, ip?: string) {
+  async submitAssessment(
+    userId: string,
+    dto: SubmitAssessmentDto,
+    ip?: string,
+  ) {
     const profile = await this.affiliateOrThrow(userId);
     if (profile.assessmentPassed) {
       throw new BadRequestException('You have already passed the assessment');
     }
 
-    const session = await this.redis.get<AssessmentSession>(this.sessionKey(userId));
+    const session = await this.redis.get<AssessmentSession>(
+      this.sessionKey(userId),
+    );
     if (!session) {
-      throw new BadRequestException('Your attempt expired or was never started');
+      throw new BadRequestException(
+        'Your attempt expired or was never started',
+      );
     }
 
     const elapsed = (Date.now() - session.startedAt) / 1000;
@@ -318,7 +359,8 @@ export class OnboardingService {
 
     let referralCode: string | null = profile.referralCode;
     if (passed) {
-      referralCode = profile.referralCode ?? (await this.issueReferralCode(userId));
+      referralCode =
+        profile.referralCode ?? (await this.issueReferralCode(userId));
       await this.prisma.affiliateProfile.update({
         where: { id: profile.id },
         data: { assessmentPassed: true, isActive: true, referralCode },
@@ -329,7 +371,9 @@ export class OnboardingService {
 
     await this.audit.record({
       actorId: userId,
-      action: passed ? 'Passed affiliate assessment' : 'Failed affiliate assessment',
+      action: passed
+        ? 'Passed affiliate assessment'
+        : 'Failed affiliate assessment',
       targetType: 'AssessmentAttempt',
       targetId: attempt.id,
       after: { score, passed, attemptsUsed },
@@ -351,7 +395,11 @@ export class OnboardingService {
 
   // ── Role applications (manual review) ─────────────────────────────────
 
-  async applyInfluencer(userId: string, dto: InfluencerApplicationDto, ip?: string) {
+  async applyInfluencer(
+    userId: string,
+    dto: InfluencerApplicationDto,
+    ip?: string,
+  ) {
     if (!Object.keys(dto.socialHandles ?? {}).length) {
       throw new BadRequestException('Provide at least one social handle');
     }
@@ -424,7 +472,9 @@ export class OnboardingService {
   // ── Internals ─────────────────────────────────────────────────────────
 
   private async affiliateOrThrow(userId: string) {
-    const profile = await this.prisma.affiliateProfile.findUnique({ where: { userId } });
+    const profile = await this.prisma.affiliateProfile.findUnique({
+      where: { userId },
+    });
     if (!profile) {
       throw new ForbiddenException('Select the affiliate role first');
     }

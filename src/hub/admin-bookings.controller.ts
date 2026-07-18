@@ -1,4 +1,14 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Param, Post, Query, Req } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Param,
+  Post,
+  Query,
+  Req,
+} from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { BookingStatus } from '@prisma/client';
 import type { Request } from 'express';
@@ -43,14 +53,22 @@ export class AdminBookingsController {
   @Post(':ref/start')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Mark IN_PROGRESS' })
-  start(@Param('ref') ref: string, @CurrentUser('id') adminId: string, @Req() req: Request) {
+  start(
+    @Param('ref') ref: string,
+    @CurrentUser('id') adminId: string,
+    @Req() req: Request,
+  ) {
     return this.bookings.start(ref, adminId, ipOf(req));
   }
 
   @Post(':ref/complete')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Mark COMPLETED' })
-  complete(@Param('ref') ref: string, @CurrentUser('id') adminId: string, @Req() req: Request) {
+  complete(
+    @Param('ref') ref: string,
+    @CurrentUser('id') adminId: string,
+    @Req() req: Request,
+  ) {
     return this.bookings.complete(ref, adminId, ipOf(req));
   }
 

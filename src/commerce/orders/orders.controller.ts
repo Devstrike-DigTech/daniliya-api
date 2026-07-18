@@ -1,4 +1,13 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Param, Post, Query } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Param,
+  Post,
+  Query,
+} from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Public } from '../../common/decorators/public.decorator';
@@ -40,7 +49,9 @@ export class OrdersController {
   @Public()
   @Post('checkout/guest-quote')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Compute order totals for a browser-held cart (no account)' })
+  @ApiOperation({
+    summary: 'Compute order totals for a browser-held cart (no account)',
+  })
   guestQuote(@Body() dto: GuestQuoteDto) {
     return this.orders.guestQuote(dto);
   }

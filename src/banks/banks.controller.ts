@@ -25,7 +25,9 @@ export class BanksController {
 
   @Public()
   @Get('banks')
-  @ApiOperation({ summary: 'Nigerian bank list (name + code) for payout selectors' })
+  @ApiOperation({
+    summary: 'Nigerian bank list (name + code) for payout selectors',
+  })
   listBanks() {
     return this.banks.listBanks();
   }
@@ -33,7 +35,9 @@ export class BanksController {
   @ApiBearerAuth()
   @Post('banks/resolve')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Name-enquiry — resolve account name from number + bank' })
+  @ApiOperation({
+    summary: 'Name-enquiry — resolve account name from number + bank',
+  })
   resolve(@Body() dto: ResolveAccountDto) {
     return this.banks.resolve(dto);
   }
@@ -47,7 +51,9 @@ export class BanksController {
 
   @ApiBearerAuth()
   @Post('me/bank-accounts')
-  @ApiOperation({ summary: 'Add a payout account (name is resolved server-side)' })
+  @ApiOperation({
+    summary: 'Add a payout account (name is resolved server-side)',
+  })
   create(
     @CurrentUser('id') userId: string,
     @Body() dto: CreateBankAccountDto,

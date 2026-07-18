@@ -7,7 +7,9 @@ export class VerticalsService {
 
   /** Public service verticals (inactive ones flagged comingSoon, not hidden). */
   async list() {
-    const rows = await this.prisma.vertical.findMany({ orderBy: { sortOrder: 'asc' } });
+    const rows = await this.prisma.vertical.findMany({
+      orderBy: { sortOrder: 'asc' },
+    });
     return rows.map((v) => ({
       slug: v.slug,
       name: v.name,
@@ -33,8 +35,14 @@ export class VerticalsService {
       description: v.description,
       heroImage: v.heroImage,
       comingSoon: !v.isActive,
-      services: v.services.map((s) => ({ name: s.name, description: s.description })),
-      portfolio: v.portfolioItems.map((p) => ({ imageUrl: p.imageUrl, caption: p.caption })),
+      services: v.services.map((s) => ({
+        name: s.name,
+        description: s.description,
+      })),
+      portfolio: v.portfolioItems.map((p) => ({
+        imageUrl: p.imageUrl,
+        caption: p.caption,
+      })),
     };
   }
 }

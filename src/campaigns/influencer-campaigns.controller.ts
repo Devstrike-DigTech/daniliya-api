@@ -1,4 +1,12 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Param, Post } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Param,
+  Post,
+} from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Role, Roles } from '../common/decorators/roles.decorator';
@@ -13,7 +21,9 @@ export class InfluencerCampaignsController {
   constructor(private readonly campaigns: CampaignsService) {}
 
   @Get('campaigns')
-  @ApiOperation({ summary: 'My assigned campaigns (brief, promo, UTM, metrics)' })
+  @ApiOperation({
+    summary: 'My assigned campaigns (brief, promo, UTM, metrics)',
+  })
   mine(@CurrentUser('id') userId: string) {
     return this.campaigns.myCampaigns(userId);
   }
@@ -27,7 +37,11 @@ export class InfluencerCampaignsController {
 
   @Post('campaigns/:id/submissions')
   @ApiOperation({ summary: 'Submit proof of post' })
-  submit(@CurrentUser('id') userId: string, @Param('id') id: string, @Body() dto: SubmitPostDto) {
+  submit(
+    @CurrentUser('id') userId: string,
+    @Param('id') id: string,
+    @Body() dto: SubmitPostDto,
+  ) {
     return this.campaigns.submitPost(userId, id, dto);
   }
 

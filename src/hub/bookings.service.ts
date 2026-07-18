@@ -1,9 +1,18 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { Booking, BookingStatus, Prisma } from '@prisma/client';
 import { randomBytes } from 'crypto';
 import { AuditService } from '../audit/audit.service';
 import { PrismaService } from '../prisma/prisma.service';
-import { AcceptBookingDto, CancelBookingDto, CreateBookingDto } from './dto/booking.dto';
+import {
+  AcceptBookingDto,
+  CancelBookingDto,
+  CreateBookingDto,
+} from './dto/booking.dto';
 
 /** Allowed forward transitions for the booking lifecycle. */
 const TRANSITIONS: Record<BookingStatus, BookingStatus[]> = {
@@ -43,7 +52,8 @@ export class BookingsService {
         description: dto.description,
         city: dto.city,
         address: dto.address,
-        budget: dto.budget !== undefined ? new Prisma.Decimal(dto.budget) : null,
+        budget:
+          dto.budget !== undefined ? new Prisma.Decimal(dto.budget) : null,
         preferredDate: dto.preferredDate ? new Date(dto.preferredDate) : null,
         attachments: dto.attachments ?? [],
       },
@@ -90,7 +100,10 @@ export class BookingsService {
 
   accept(ref: string, dto: AcceptBookingDto, adminId: string, ip?: string) {
     return this.transition(ref, BookingStatus.CONFIRMED, adminId, ip, {
-      quotedAmount: dto.quotedAmount !== undefined ? new Prisma.Decimal(dto.quotedAmount) : undefined,
+      quotedAmount:
+        dto.quotedAmount !== undefined
+          ? new Prisma.Decimal(dto.quotedAmount)
+          : undefined,
       adminNote: dto.note,
       confirmedAt: new Date(),
     });
@@ -101,7 +114,9 @@ export class BookingsService {
   }
 
   complete(ref: string, adminId: string, ip?: string) {
-    return this.transition(ref, BookingStatus.COMPLETED, adminId, ip, { completedAt: new Date() });
+    return this.transition(ref, BookingStatus.COMPLETED, adminId, ip, {
+      completedAt: new Date(),
+    });
   }
 
   reject(ref: string, dto: CancelBookingDto, adminId: string, ip?: string) {
@@ -129,7 +144,9 @@ export class BookingsService {
     if (!booking) throw new NotFoundException('Booking not found');
 
     if (!TRANSITIONS[booking.status].includes(to)) {
-      throw new BadRequestException(`Cannot move a ${booking.status} booking to ${to}`);
+      throw new BadRequestException(
+        `Cannot move a ${booking.status} booking to ${to}`,
+      );
     }
 
     const updated = await this.prisma.booking.update({
@@ -156,7 +173,9 @@ export class BookingsService {
     return `BKG-${randomBytes(3).toString('hex').toUpperCase()}`;
   }
 
-  private present(b: Booking & { vertical?: { name: string; slug: string } | null }) {
+  private present(
+    b: Booking & { vertical?: { name: string; slug: string } | null },
+  ) {
     return {
       ref: b.ref,
       status: b.status,

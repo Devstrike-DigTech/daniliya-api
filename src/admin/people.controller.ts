@@ -1,4 +1,14 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Param, Post, Query, Req } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Param,
+  Post,
+  Query,
+  Req,
+} from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import type { Request } from 'express';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
@@ -27,7 +37,12 @@ export class AdminPeopleController {
   @Post('affiliates/:id/tier')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Change affiliate tier' })
-  tier(@Param('id') id: string, @Body() dto: ChangeTierDto, @CurrentUser('id') a: string, @Req() r: Request) {
+  tier(
+    @Param('id') id: string,
+    @Body() dto: ChangeTierDto,
+    @CurrentUser('id') a: string,
+    @Req() r: Request,
+  ) {
     return this.people.changeTier(id, dto, a, ipOf(r));
   }
 
@@ -42,12 +57,21 @@ export class AdminPeopleController {
   }
   @Post('influencers/:id/approve')
   @HttpCode(HttpStatus.OK)
-  approveInf(@Param('id') id: string, @CurrentUser('id') a: string, @Req() r: Request) {
+  approveInf(
+    @Param('id') id: string,
+    @CurrentUser('id') a: string,
+    @Req() r: Request,
+  ) {
     return this.people.approveInfluencer(id, a, ipOf(r));
   }
   @Post('influencers/:id/reject')
   @HttpCode(HttpStatus.OK)
-  rejectInf(@Param('id') id: string, @Body() dto: RejectDto, @CurrentUser('id') a: string, @Req() r: Request) {
+  rejectInf(
+    @Param('id') id: string,
+    @Body() dto: RejectDto,
+    @CurrentUser('id') a: string,
+    @Req() r: Request,
+  ) {
     return this.people.rejectInfluencer(id, dto, a, ipOf(r));
   }
 
@@ -62,29 +86,51 @@ export class AdminPeopleController {
   }
   @Post('vendors/:id/approve')
   @HttpCode(HttpStatus.OK)
-  approveVen(@Param('id') id: string, @CurrentUser('id') a: string, @Req() r: Request) {
+  approveVen(
+    @Param('id') id: string,
+    @CurrentUser('id') a: string,
+    @Req() r: Request,
+  ) {
     return this.people.approveVendor(id, a, ipOf(r));
   }
   @Post('vendors/:id/reject')
   @HttpCode(HttpStatus.OK)
-  rejectVen(@Param('id') id: string, @Body() dto: RejectDto, @CurrentUser('id') a: string, @Req() r: Request) {
+  rejectVen(
+    @Param('id') id: string,
+    @Body() dto: RejectDto,
+    @CurrentUser('id') a: string,
+    @Req() r: Request,
+  ) {
     return this.people.rejectVendor(id, dto, a, ipOf(r));
   }
 
   // Standing + message (by userId, any role)
   @Post('users/:userId/suspend')
   @HttpCode(HttpStatus.OK)
-  suspend(@Param('userId') userId: string, @CurrentUser('id') a: string, @Req() r: Request) {
+  suspend(
+    @Param('userId') userId: string,
+    @CurrentUser('id') a: string,
+    @Req() r: Request,
+  ) {
     return this.people.suspend(userId, a, ipOf(r));
   }
   @Post('users/:userId/reinstate')
   @HttpCode(HttpStatus.OK)
-  reinstate(@Param('userId') userId: string, @CurrentUser('id') a: string, @Req() r: Request) {
+  reinstate(
+    @Param('userId') userId: string,
+    @CurrentUser('id') a: string,
+    @Req() r: Request,
+  ) {
     return this.people.reinstate(userId, a, ipOf(r));
   }
   @Post('users/:userId/message')
   @HttpCode(HttpStatus.OK)
-  message(@Param('userId') userId: string, @Body() dto: MessageUserDto, @CurrentUser('id') a: string, @Req() r: Request) {
+  message(
+    @Param('userId') userId: string,
+    @Body() dto: MessageUserDto,
+    @CurrentUser('id') a: string,
+    @Req() r: Request,
+  ) {
     return this.people.message(userId, dto, a, ipOf(r));
   }
 }

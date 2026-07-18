@@ -1,4 +1,8 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { OrderStatus, PaymentStatus } from '@prisma/client';
 import { AuditService } from '../../audit/audit.service';
 import { CommissionsService } from '../../commissions/commissions.service';
@@ -28,7 +32,9 @@ export class AdminOrdersService {
       channel: o.channel,
       customer: `${o.customer.firstName} ${o.customer.lastName}`,
       total: o.total,
-      payment: o.payment ? { method: o.payment.method, status: o.payment.status } : null,
+      payment: o.payment
+        ? { method: o.payment.method, status: o.payment.status }
+        : null,
       createdAt: o.createdAt,
     }));
   }
@@ -39,10 +45,14 @@ export class AdminOrdersService {
       where: { ref },
       include: {
         payment: true,
-        customer: { select: { firstName: true, lastName: true, email: true, phone: true } },
+        customer: {
+          select: { firstName: true, lastName: true, email: true, phone: true },
+        },
         items: {
           include: {
-            product: { select: { id: true, vendor: { select: { businessName: true } } } },
+            product: {
+              select: { id: true, vendor: { select: { businessName: true } } },
+            },
           },
         },
       },
@@ -105,14 +115,24 @@ export class AdminOrdersService {
   }
 
   /** Refund/cancel: restore stock, mark payment refunded, void commissions. */
-  private async reverse(ref: string, to: OrderStatus, adminId: string, ip?: string) {
+  private async reverse(
+    ref: string,
+    to: OrderStatus,
+    adminId: string,
+    ip?: string,
+  ) {
     const order = await this.prisma.order.findUnique({
       where: { ref },
       include: { items: true, payment: true },
     });
     if (!order) throw new NotFoundException('Order not found');
-    if (order.status === OrderStatus.REFUNDED || order.status === OrderStatus.CANCELLED) {
-      throw new BadRequestException(`Order is already ${order.status.toLowerCase()}`);
+    if (
+      order.status === OrderStatus.REFUNDED ||
+      order.status === OrderStatus.CANCELLED
+    ) {
+      throw new BadRequestException(
+        `Order is already ${order.status.toLowerCase()}`,
+      );
     }
 
     await this.prisma.$transaction(async (tx) => {
@@ -142,7 +162,8 @@ export class AdminOrdersService {
 
     await this.audit.record({
       actorId: adminId,
-      action: to === OrderStatus.REFUNDED ? 'Refunded order' : 'Cancelled order',
+      action:
+        to === OrderStatus.REFUNDED ? 'Refunded order' : 'Cancelled order',
       targetType: 'Order',
       targetId: order.id,
       before: { status: order.status },

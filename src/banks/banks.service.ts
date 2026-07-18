@@ -23,7 +23,10 @@ export class BanksService {
   /** Name-enquiry. The client never supplies the account name — we resolve it. */
   async resolve(dto: ResolveAccountDto) {
     const bank = await this.findBank(dto.bankCode);
-    const resolved = await this.paystack.resolveAccount(dto.accountNumber, dto.bankCode);
+    const resolved = await this.paystack.resolveAccount(
+      dto.accountNumber,
+      dto.bankCode,
+    );
 
     if (!resolved) {
       throw new BadRequestException(
@@ -93,7 +96,10 @@ export class BanksService {
       action: 'Added payout account',
       targetType: 'BankAccount',
       targetId: account.id,
-      after: { bankName: account.bankName, accountNumber: account.accountNumber },
+      after: {
+        bankName: account.bankName,
+        accountNumber: account.accountNumber,
+      },
       ip,
     });
 
@@ -108,7 +114,10 @@ export class BanksService {
         where: { userId, isDefault: true },
         data: { isDefault: false },
       }),
-      this.prisma.bankAccount.update({ where: { id }, data: { isDefault: true } }),
+      this.prisma.bankAccount.update({
+        where: { id },
+        data: { isDefault: true },
+      }),
     ]);
 
     await this.audit.record({
@@ -116,7 +125,10 @@ export class BanksService {
       action: 'Changed default payout account',
       targetType: 'BankAccount',
       targetId: id,
-      after: { bankName: account.bankName, accountNumber: account.accountNumber },
+      after: {
+        bankName: account.bankName,
+        accountNumber: account.accountNumber,
+      },
       ip,
     });
 
@@ -133,7 +145,10 @@ export class BanksService {
       action: 'Removed payout account',
       targetType: 'BankAccount',
       targetId: id,
-      before: { bankName: account.bankName, accountNumber: account.accountNumber },
+      before: {
+        bankName: account.bankName,
+        accountNumber: account.accountNumber,
+      },
       ip,
     });
 

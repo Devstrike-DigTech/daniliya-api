@@ -26,7 +26,14 @@ export class LedgerService {
       update: { balance: { increment: amount } },
     });
     await db.ledgerEntry.create({
-      data: { walletId: wallet.id, type: LedgerType.CREDIT, amount, source, sourceId, balanceAfter: wallet.balance },
+      data: {
+        walletId: wallet.id,
+        type: LedgerType.CREDIT,
+        amount,
+        source,
+        sourceId,
+        balanceAfter: wallet.balance,
+      },
     });
     return wallet.balance;
   }
@@ -47,7 +54,14 @@ export class LedgerService {
       data: { balance: { decrement: amount } },
     });
     await db.ledgerEntry.create({
-      data: { walletId: updated.id, type: LedgerType.DEBIT, amount, source, sourceId, balanceAfter: updated.balance },
+      data: {
+        walletId: updated.id,
+        type: LedgerType.DEBIT,
+        amount,
+        source,
+        sourceId,
+        balanceAfter: updated.balance,
+      },
     });
     return updated.balance;
   }
@@ -63,11 +77,19 @@ export class LedgerService {
    */
   async reconcile() {
     const [credits, debits, wallets] = await Promise.all([
-      this.prisma.ledgerEntry.aggregate({ where: { type: LedgerType.CREDIT }, _sum: { amount: true } }),
-      this.prisma.ledgerEntry.aggregate({ where: { type: LedgerType.DEBIT }, _sum: { amount: true } }),
+      this.prisma.ledgerEntry.aggregate({
+        where: { type: LedgerType.CREDIT },
+        _sum: { amount: true },
+      }),
+      this.prisma.ledgerEntry.aggregate({
+        where: { type: LedgerType.DEBIT },
+        _sum: { amount: true },
+      }),
       this.prisma.wallet.aggregate({ _sum: { balance: true } }),
     ]);
-    const ledgerNet = (credits._sum.amount ?? new Prisma.Decimal(0)).minus(debits._sum.amount ?? 0);
+    const ledgerNet = (credits._sum.amount ?? new Prisma.Decimal(0)).minus(
+      debits._sum.amount ?? 0,
+    );
     const walletTotal = wallets._sum.balance ?? new Prisma.Decimal(0);
     const drift = ledgerNet.minus(walletTotal);
     return {

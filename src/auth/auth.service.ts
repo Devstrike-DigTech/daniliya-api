@@ -56,7 +56,7 @@ export class AuthService {
     const password = await bcrypt.hash(dto.password, BCRYPT_ROUNDS);
     const user = claiming
       ? await this.prisma.user.update({
-          where: { id: existing!.id },
+          where: { id: existing.id },
           data: {
             phone: dto.phone,
             firstName: dto.firstName,
@@ -126,7 +126,9 @@ export class AuthService {
 
     const cooldownKey = `otp:cooldown:${user.id}`;
     if (await this.redis.exists(cooldownKey)) {
-      throw new BadRequestException('Please wait before requesting another code');
+      throw new BadRequestException(
+        'Please wait before requesting another code',
+      );
     }
 
     await this.sendOtp(user);
@@ -140,7 +142,10 @@ export class AuthService {
     const user = await this.prisma.user.findUnique({ where: { email } });
 
     // Same error for unknown email and wrong password — don't leak which.
-    if (!user?.password || !(await bcrypt.compare(dto.password, user.password))) {
+    if (
+      !user?.password ||
+      !(await bcrypt.compare(dto.password, user.password))
+    ) {
       throw new UnauthorizedException('Invalid email or password');
     }
 
@@ -176,13 +181,17 @@ export class AuthService {
       await this.mail.sendPasswordReset(email, token);
     }
 
-    return { message: 'If that email is registered, a reset link is on its way.' };
+    return {
+      message: 'If that email is registered, a reset link is on its way.',
+    };
   }
 
   async resetPassword(dto: ResetPasswordDto) {
     const userId = await this.redis.get<string>(this.resetKey(dto.token));
     if (!userId) {
-      throw new BadRequestException('This reset link is invalid or has expired');
+      throw new BadRequestException(
+        'This reset link is invalid or has expired',
+      );
     }
 
     await this.prisma.user.update({
@@ -237,7 +246,11 @@ export class AuthService {
   private async sendOtp(user: User) {
     const code = randomInt(0, 1_000_000).toString().padStart(6, '0');
     await this.redis.set(this.otpKey(user.id), code, OTP_TTL_SECONDS);
-    await this.redis.set(`otp:cooldown:${user.id}`, '1', OTP_RESEND_COOLDOWN_SECONDS);
+    await this.redis.set(
+      `otp:cooldown:${user.id}`,
+      '1',
+      OTP_RESEND_COOLDOWN_SECONDS,
+    );
     if (user.email) await this.mail.sendOtp(user.email, code);
   }
 

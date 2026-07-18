@@ -48,11 +48,15 @@ export class EnvVars {
 
   // ── Auth ──────────────────────────────────────────────────────────────
   @IsString()
-  @MinLength(32, { message: 'JWT_ACCESS_SECRET must be at least 32 characters' })
+  @MinLength(32, {
+    message: 'JWT_ACCESS_SECRET must be at least 32 characters',
+  })
   JWT_ACCESS_SECRET!: string;
 
   @IsString()
-  @MinLength(32, { message: 'JWT_REFRESH_SECRET must be at least 32 characters' })
+  @MinLength(32, {
+    message: 'JWT_REFRESH_SECRET must be at least 32 characters',
+  })
   JWT_REFRESH_SECRET!: string;
 
   @IsString()
@@ -103,7 +107,10 @@ export function validateEnv(config: Record<string, unknown>) {
 
   if (errors.length > 0) {
     const details = errors
-      .map((e) => `  - ${e.property}: ${Object.values(e.constraints ?? {}).join(', ')}`)
+      .map(
+        (e) =>
+          `  - ${e.property}: ${Object.values(e.constraints ?? {}).join(', ')}`,
+      )
       .join('\n');
     throw new Error(`Invalid environment configuration:\n${details}`);
   }

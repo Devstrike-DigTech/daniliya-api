@@ -1,4 +1,8 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { AffiliateTier, UserStatus } from '@prisma/client';
 import { AuditService } from '../audit/audit.service';
 import { MailService } from '../notifications/mail.service';
@@ -22,8 +26,26 @@ export class AdminPeopleService {
 
   affiliates(q?: string) {
     return this.prisma.affiliateProfile.findMany({
-      where: q ? { user: { OR: [{ firstName: { contains: q, mode: 'insensitive' } }, { email: { contains: q, mode: 'insensitive' } }] } } : undefined,
-      include: { user: { select: { firstName: true, lastName: true, email: true, status: true } } },
+      where: q
+        ? {
+            user: {
+              OR: [
+                { firstName: { contains: q, mode: 'insensitive' } },
+                { email: { contains: q, mode: 'insensitive' } },
+              ],
+            },
+          }
+        : undefined,
+      include: {
+        user: {
+          select: {
+            firstName: true,
+            lastName: true,
+            email: true,
+            status: true,
+          },
+        },
+      },
       orderBy: { createdAt: 'desc' },
     });
   }
@@ -31,15 +53,33 @@ export class AdminPeopleService {
   async affiliate(id: string) {
     const p = await this.prisma.affiliateProfile.findUnique({
       where: { id },
-      include: { user: { select: { firstName: true, lastName: true, email: true, phone: true, status: true } } },
+      include: {
+        user: {
+          select: {
+            firstName: true,
+            lastName: true,
+            email: true,
+            phone: true,
+            status: true,
+          },
+        },
+      },
     });
     if (!p) throw new NotFoundException('Affiliate not found');
     return p;
   }
 
-  async changeTier(id: string, dto: ChangeTierDto, adminId: string, ip?: string) {
+  async changeTier(
+    id: string,
+    dto: ChangeTierDto,
+    adminId: string,
+    ip?: string,
+  ) {
     const p = await this.affiliate(id);
-    const updated = await this.prisma.affiliateProfile.update({ where: { id }, data: { tier: dto.tier } });
+    const updated = await this.prisma.affiliateProfile.update({
+      where: { id },
+      data: { tier: dto.tier },
+    });
     await this.audit.record({
       actorId: adminId,
       action: 'Changed affiliate tier',
@@ -56,8 +96,26 @@ export class AdminPeopleService {
 
   influencers(q?: string) {
     return this.prisma.influencerProfile.findMany({
-      where: q ? { user: { OR: [{ firstName: { contains: q, mode: 'insensitive' } }, { email: { contains: q, mode: 'insensitive' } }] } } : undefined,
-      include: { user: { select: { firstName: true, lastName: true, email: true, status: true } } },
+      where: q
+        ? {
+            user: {
+              OR: [
+                { firstName: { contains: q, mode: 'insensitive' } },
+                { email: { contains: q, mode: 'insensitive' } },
+              ],
+            },
+          }
+        : undefined,
+      include: {
+        user: {
+          select: {
+            firstName: true,
+            lastName: true,
+            email: true,
+            status: true,
+          },
+        },
+      },
       orderBy: { createdAt: 'desc' },
     });
   }
@@ -66,7 +124,16 @@ export class AdminPeopleService {
     const p = await this.prisma.influencerProfile.findUnique({
       where: { id },
       include: {
-        user: { select: { id: true, firstName: true, lastName: true, email: true, phone: true, status: true } },
+        user: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            email: true,
+            phone: true,
+            status: true,
+          },
+        },
       },
     });
     if (!p) throw new NotFoundException('Influencer not found');
@@ -80,12 +147,22 @@ export class AdminPeopleService {
     return this.decideInfluencer(id, false, dto.reason, adminId, ip);
   }
 
-  private async decideInfluencer(id: string, approve: boolean, reason: string | undefined, adminId: string, ip?: string) {
+  private async decideInfluencer(
+    id: string,
+    approve: boolean,
+    reason: string | undefined,
+    adminId: string,
+    ip?: string,
+  ) {
     const p = await this.prisma.influencerProfile.findUnique({ where: { id } });
     if (!p) throw new NotFoundException('Influencer not found');
     const updated = await this.prisma.influencerProfile.update({
       where: { id },
-      data: { isApproved: approve, approvedAt: approve ? new Date() : null, rejectedReason: approve ? null : (reason ?? 'Not approved') },
+      data: {
+        isApproved: approve,
+        approvedAt: approve ? new Date() : null,
+        rejectedReason: approve ? null : (reason ?? 'Not approved'),
+      },
     });
     await this.audit.record({
       actorId: adminId,
@@ -102,8 +179,24 @@ export class AdminPeopleService {
 
   vendors(q?: string) {
     return this.prisma.vendorProfile.findMany({
-      where: q ? { OR: [{ businessName: { contains: q, mode: 'insensitive' } }, { user: { email: { contains: q, mode: 'insensitive' } } }] } : undefined,
-      include: { user: { select: { firstName: true, lastName: true, email: true, status: true } } },
+      where: q
+        ? {
+            OR: [
+              { businessName: { contains: q, mode: 'insensitive' } },
+              { user: { email: { contains: q, mode: 'insensitive' } } },
+            ],
+          }
+        : undefined,
+      include: {
+        user: {
+          select: {
+            firstName: true,
+            lastName: true,
+            email: true,
+            status: true,
+          },
+        },
+      },
       orderBy: { createdAt: 'desc' },
     });
   }
@@ -112,7 +205,16 @@ export class AdminPeopleService {
     const p = await this.prisma.vendorProfile.findUnique({
       where: { id },
       include: {
-        user: { select: { id: true, firstName: true, lastName: true, email: true, phone: true, status: true } },
+        user: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            email: true,
+            phone: true,
+            status: true,
+          },
+        },
         _count: { select: { products: true, reviews: true } },
       },
     });
@@ -127,12 +229,22 @@ export class AdminPeopleService {
     return this.decideVendor(id, false, dto.reason, adminId, ip);
   }
 
-  private async decideVendor(id: string, approve: boolean, reason: string | undefined, adminId: string, ip?: string) {
+  private async decideVendor(
+    id: string,
+    approve: boolean,
+    reason: string | undefined,
+    adminId: string,
+    ip?: string,
+  ) {
     const p = await this.prisma.vendorProfile.findUnique({ where: { id } });
     if (!p) throw new NotFoundException('Vendor not found');
     const updated = await this.prisma.vendorProfile.update({
       where: { id },
-      data: { isApproved: approve, approvedAt: approve ? new Date() : null, rejectedReason: approve ? null : (reason ?? 'Not approved') },
+      data: {
+        isApproved: approve,
+        approvedAt: approve ? new Date() : null,
+        rejectedReason: approve ? null : (reason ?? 'Not approved'),
+      },
     });
     await this.audit.record({
       actorId: adminId,
@@ -154,16 +266,25 @@ export class AdminPeopleService {
     return this.setStanding(userId, UserStatus.ACTIVE, adminId, ip);
   }
 
-  private async setStanding(userId: string, to: UserStatus, adminId: string, ip?: string) {
+  private async setStanding(
+    userId: string,
+    to: UserStatus,
+    adminId: string,
+    ip?: string,
+  ) {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user) throw new NotFoundException('User not found');
     if (user.status === UserStatus.PENDING_VERIFICATION) {
       throw new BadRequestException('User has not verified their account');
     }
-    await this.prisma.user.update({ where: { id: userId }, data: { status: to } });
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { status: to },
+    });
     await this.audit.record({
       actorId: adminId,
-      action: to === UserStatus.SUSPENDED ? 'Suspended user' : 'Reinstated user',
+      action:
+        to === UserStatus.SUSPENDED ? 'Suspended user' : 'Reinstated user',
       targetType: 'User',
       targetId: userId,
       before: { status: user.status },
@@ -173,7 +294,12 @@ export class AdminPeopleService {
     return { userId, status: to };
   }
 
-  async message(userId: string, dto: MessageUserDto, adminId: string, ip?: string) {
+  async message(
+    userId: string,
+    dto: MessageUserDto,
+    adminId: string,
+    ip?: string,
+  ) {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user?.email) throw new NotFoundException('User not found');
     await this.mail.sendNotice(user.email, dto.subject, dto.body);

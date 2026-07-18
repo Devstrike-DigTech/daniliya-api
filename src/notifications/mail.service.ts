@@ -21,7 +21,8 @@ export class MailService {
     this.resend = apiKey ? new Resend(apiKey) : null;
     this.isProd = this.config.get<string>('NODE_ENV') === 'production';
 
-    const email = this.config.get<string>('RESEND_FROM_EMAIL') ?? 'no-reply@daniliya.com';
+    const email =
+      this.config.get<string>('RESEND_FROM_EMAIL') ?? 'no-reply@daniliya.com';
     const name = this.config.get<string>('RESEND_FROM_NAME') ?? 'Daniliya';
     this.from = `${name} <${email}>`;
 

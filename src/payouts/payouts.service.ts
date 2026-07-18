@@ -1,4 +1,10 @@
-import { BadRequestException, Injectable, Logger, NotFoundException, UnauthorizedException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  NotFoundException,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import {
   BeneficiaryType,
@@ -65,37 +71,69 @@ export class PayoutsService {
 
   private async doRun(adminId?: string, ip?: string) {
     const confirmed = await this.commissions.confirmEligible();
-    const batches: { ref: string; audience: PayoutAudience; recipients: number; total: string }[] = [];
+    const batches: {
+      ref: string;
+      audience: PayoutAudience;
+      recipients: number;
+      total: string;
+    }[] = [];
 
-    for (const audience of [PayoutAudience.AFFILIATE, PayoutAudience.INFLUENCER, PayoutAudience.VENDOR]) {
+    for (const audience of [
+      PayoutAudience.AFFILIATE,
+      PayoutAudience.INFLUENCER,
+      PayoutAudience.VENDOR,
+    ]) {
       const type = AUDIENCE_TO_TYPE[audience];
       const eligible = await this.prisma.commissionRecord.findMany({
-        where: { status: CommissionStatus.CONFIRMED, beneficiaryType: type, payoutItemId: null },
+        where: {
+          status: CommissionStatus.CONFIRMED,
+          beneficiaryType: type,
+          payoutItemId: null,
+        },
       });
       if (eligible.length === 0) continue;
 
       // Group confirmed commissions by beneficiary.
-      const byUser = new Map<string, { amount: Prisma.Decimal; ids: string[] }>();
+      const byUser = new Map<
+        string,
+        { amount: Prisma.Decimal; ids: string[] }
+      >();
       for (const c of eligible) {
-        const g = byUser.get(c.beneficiaryId) ?? { amount: new Prisma.Decimal(0), ids: [] };
+        const g = byUser.get(c.beneficiaryId) ?? {
+          amount: new Prisma.Decimal(0),
+          ids: [],
+        };
         g.amount = g.amount.plus(c.amount);
         g.ids.push(c.id);
         byUser.set(c.beneficiaryId, g);
       }
 
       // Keep only those over the minimum with a bank account on file.
-      const includable: { userId: string; amount: Prisma.Decimal; ids: string[]; bankAccountId: string | null }[] = [];
+      const includable: {
+        userId: string;
+        amount: Prisma.Decimal;
+        ids: string[];
+        bankAccountId: string | null;
+      }[] = [];
       for (const [userId, g] of byUser) {
         if (g.amount.lessThan(this.config.getDecimal('MIN_PAYOUT'))) continue; // rolls over
         const bank = await this.prisma.bankAccount.findFirst({
           where: { userId },
           orderBy: { isDefault: 'desc' },
         });
-        includable.push({ userId, amount: g.amount, ids: g.ids, bankAccountId: bank?.id ?? null });
+        includable.push({
+          userId,
+          amount: g.amount,
+          ids: g.ids,
+          bankAccountId: bank?.id ?? null,
+        });
       }
       if (includable.length === 0) continue;
 
-      const total = includable.reduce((s, i) => s.plus(i.amount), new Prisma.Decimal(0));
+      const total = includable.reduce(
+        (s, i) => s.plus(i.amount),
+        new Prisma.Decimal(0),
+      );
       const batch = await this.prisma.$transaction(async (tx) => {
         const created = await tx.payoutBatch.create({
           data: {
@@ -117,22 +155,43 @@ export class PayoutsService {
           });
           await tx.commissionRecord.updateMany({
             where: { id: { in: inc.ids } },
-            data: { status: CommissionStatus.QUEUED, payoutItemId: item.id, payoutBatchId: created.id },
+            data: {
+              status: CommissionStatus.QUEUED,
+              payoutItemId: item.id,
+              payoutBatchId: created.id,
+            },
           });
         }
         // Compliance gate.
         const allBanked = includable.every((i) => i.bankAccountId);
         await tx.complianceCheck.createMany({
           data: [
-            { batchId: created.id, label: 'KYC verified on all recipients', passed: allBanked },
-            { batchId: created.id, label: 'Bank accounts validated', passed: allBanked },
-            { batchId: created.id, label: 'Sufficient float on Paystack', passed: true },
+            {
+              batchId: created.id,
+              label: 'KYC verified on all recipients',
+              passed: allBanked,
+            },
+            {
+              batchId: created.id,
+              label: 'Bank accounts validated',
+              passed: allBanked,
+            },
+            {
+              batchId: created.id,
+              label: 'Sufficient float on Paystack',
+              passed: true,
+            },
           ],
         });
         return created;
       });
 
-      batches.push({ ref: batch.ref, audience, recipients: includable.length, total: total.toString() });
+      batches.push({
+        ref: batch.ref,
+        audience,
+        recipients: includable.length,
+        total: total.toString(),
+      });
     }
 
     if (adminId) {
@@ -149,7 +208,10 @@ export class PayoutsService {
 
   async list(audience?: PayoutAudience, status?: PayoutBatchStatus) {
     const rows = await this.prisma.payoutBatch.findMany({
-      where: { ...(audience ? { audience } : {}), ...(status ? { status } : {}) },
+      where: {
+        ...(audience ? { audience } : {}),
+        ...(status ? { status } : {}),
+      },
       include: { _count: { select: { items: true } } },
       orderBy: { createdAt: 'desc' },
     });
@@ -167,7 +229,12 @@ export class PayoutsService {
     const batch = await this.prisma.payoutBatch.findUnique({
       where: { ref },
       include: {
-        items: { include: { beneficiary: { select: { firstName: true, lastName: true } }, transfer: true } },
+        items: {
+          include: {
+            beneficiary: { select: { firstName: true, lastName: true } },
+            transfer: true,
+          },
+        },
         checks: true,
       },
     });
@@ -184,7 +251,9 @@ export class PayoutsService {
         beneficiary: `${i.beneficiary.firstName} ${i.beneficiary.lastName}`,
         amount: i.amount,
         status: i.status,
-        transfer: i.transfer ? { ref: i.transfer.providerRef, status: i.transfer.status } : null,
+        transfer: i.transfer
+          ? { ref: i.transfer.providerRef, status: i.transfer.status }
+          : null,
       })),
     };
   }
@@ -193,16 +262,26 @@ export class PayoutsService {
   async approve(ref: string, adminId: string, ip?: string) {
     const batch = await this.getBatch(ref);
     if (batch.status !== PayoutBatchStatus.REVIEW) {
-      throw new BadRequestException(`Only a batch in review can be approved (is ${batch.status})`);
+      throw new BadRequestException(
+        `Only a batch in review can be approved (is ${batch.status})`,
+      );
     }
-    const checks = await this.prisma.complianceCheck.findMany({ where: { batchId: batch.id } });
+    const checks = await this.prisma.complianceCheck.findMany({
+      where: { batchId: batch.id },
+    });
     if (!checks.every((c) => c.passed)) {
-      throw new BadRequestException('Compliance checks must all pass before approval');
+      throw new BadRequestException(
+        'Compliance checks must all pass before approval',
+      );
     }
 
     await this.prisma.payoutBatch.update({
       where: { id: batch.id },
-      data: { status: PayoutBatchStatus.SCHEDULED, approvedAt: new Date(), adminId },
+      data: {
+        status: PayoutBatchStatus.SCHEDULED,
+        approvedAt: new Date(),
+        adminId,
+      },
     });
 
     await this.initiateTransfers(batch.id);
@@ -244,14 +323,18 @@ export class PayoutsService {
     const items = await this.prisma.payoutItem.findMany({
       where: {
         batchId,
-        status: retryFailed ? PayoutItemStatus.FAILED : PayoutItemStatus.PENDING,
+        status: retryFailed
+          ? PayoutItemStatus.FAILED
+          : PayoutItemStatus.PENDING,
       },
       include: { beneficiary: true, batch: true },
     });
 
     for (const item of items) {
       const bank = item.bankAccountId
-        ? await this.prisma.bankAccount.findUnique({ where: { id: item.bankAccountId } })
+        ? await this.prisma.bankAccount.findUnique({
+            where: { id: item.bankAccountId },
+          })
         : null;
 
       const reference = `DNLTRF-${randomBytes(8).toString('hex').toUpperCase()}`;
@@ -278,7 +361,9 @@ export class PayoutsService {
         reference,
         reason: `Daniliya ${item.batch.audience.toLowerCase()} payout`,
         recipient: {
-          name: bank?.accountName ?? `${item.beneficiary.firstName} ${item.beneficiary.lastName}`,
+          name:
+            bank?.accountName ??
+            `${item.beneficiary.firstName} ${item.beneficiary.lastName}`,
           bankCode: bank?.bankCode ?? '',
           accountNumber: bank?.accountNumber ?? '',
         },
@@ -300,7 +385,9 @@ export class PayoutsService {
     const reference = event.data?.reference;
     const externalEventId = `paystack:${event.event}:${reference}`;
 
-    const seen = await this.prisma.webhookEvent.findUnique({ where: { externalEventId } });
+    const seen = await this.prisma.webhookEvent.findUnique({
+      where: { externalEventId },
+    });
     if (seen) return { received: true, duplicate: true };
 
     if (event.event === 'transfer.success' && reference) {
@@ -310,7 +397,12 @@ export class PayoutsService {
     }
 
     await this.prisma.webhookEvent.create({
-      data: { provider: 'paystack', externalEventId, eventType: event.event, payload: event as object },
+      data: {
+        provider: 'paystack',
+        externalEventId,
+        eventType: event.event,
+        payload: event,
+      },
     });
     return { received: true, duplicate: false };
   }
@@ -324,14 +416,26 @@ export class PayoutsService {
     const item = transfer.payoutItem;
 
     await this.prisma.$transaction(async (tx) => {
-      await tx.transfer.update({ where: { id: transfer.id }, data: { status: TransferStatus.SUCCESS } });
-      await tx.payoutItem.update({ where: { id: item.id }, data: { status: PayoutItemStatus.PAID } });
+      await tx.transfer.update({
+        where: { id: transfer.id },
+        data: { status: TransferStatus.SUCCESS },
+      });
+      await tx.payoutItem.update({
+        where: { id: item.id },
+        data: { status: PayoutItemStatus.PAID },
+      });
       await tx.commissionRecord.updateMany({
         where: { payoutItemId: item.id },
         data: { status: CommissionStatus.DISBURSED, disbursedAt: new Date() },
       });
       // Debit the wallet — the credit from confirmation is now settled out.
-      await this.ledger.debit(item.beneficiaryId, item.amount, 'payout', item.id, tx);
+      await this.ledger.debit(
+        item.beneficiaryId,
+        item.amount,
+        'payout',
+        item.id,
+        tx,
+      );
     });
 
     await this.maybeCloseBatch(item.batchId);
@@ -345,10 +449,16 @@ export class PayoutsService {
     });
     if (!transfer || transfer.status === TransferStatus.SUCCESS) return;
 
-    await this.prisma.transfer.update({ where: { id: transfer.id }, data: { status: TransferStatus.FAILED } });
+    await this.prisma.transfer.update({
+      where: { id: transfer.id },
+      data: { status: TransferStatus.FAILED },
+    });
     await this.prisma.payoutItem.update({
       where: { id: transfer.payoutItemId },
-      data: { status: PayoutItemStatus.FAILED, failureReason: 'Transfer failed at provider' },
+      data: {
+        status: PayoutItemStatus.FAILED,
+        failureReason: 'Transfer failed at provider',
+      },
     });
     await this.maybeCloseBatch(transfer.payoutItem.batchId);
   }
@@ -397,9 +507,17 @@ export class PayoutsService {
     return batch;
   }
 
-  private async setBatchStatus(ref: string, to: PayoutBatchStatus, adminId: string, ip?: string) {
+  private async setBatchStatus(
+    ref: string,
+    to: PayoutBatchStatus,
+    adminId: string,
+    ip?: string,
+  ) {
     const batch = await this.getBatch(ref);
-    const updated = await this.prisma.payoutBatch.update({ where: { id: batch.id }, data: { status: to } });
+    const updated = await this.prisma.payoutBatch.update({
+      where: { id: batch.id },
+      data: { status: to },
+    });
     await this.audit.record({
       actorId: adminId,
       action: `Payout batch ${to.toLowerCase()}`,
@@ -419,7 +537,7 @@ export class PayoutsService {
   private nextMonday(): Date {
     const d = new Date();
     const day = d.getUTCDay();
-    const add = ((8 - day) % 7) || 7;
+    const add = (8 - day) % 7 || 7;
     d.setUTCDate(d.getUTCDate() + add);
     d.setUTCHours(8, 0, 0, 0);
     return d;

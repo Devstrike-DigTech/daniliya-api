@@ -31,7 +31,9 @@ export class CommissionsService {
   ) {}
 
   async accrueForOrder(orderId: string): Promise<void> {
-    const order = await this.prisma.order.findUnique({ where: { id: orderId } });
+    const order = await this.prisma.order.findUnique({
+      where: { id: orderId },
+    });
     if (!order) return;
 
     await this.accrueAffiliate(order);
@@ -54,22 +56,35 @@ export class CommissionsService {
     for (const it of items) {
       const vid = it.product.vendorId;
       if (!vid) continue;
-      byVendor.set(vid, (byVendor.get(vid) ?? new Prisma.Decimal(0)).plus(it.totalPrice));
+      byVendor.set(
+        vid,
+        (byVendor.get(vid) ?? new Prisma.Decimal(0)).plus(it.totalPrice),
+      );
     }
     if (byVendor.size === 0) return;
 
     for (const [vendorId, gross] of byVendor) {
-      const vendor = await this.prisma.vendorProfile.findUnique({ where: { id: vendorId } });
+      const vendor = await this.prisma.vendorProfile.findUnique({
+        where: { id: vendorId },
+      });
       if (!vendor) continue;
       const keepBps = 10000 - vendor.takeRateBps;
       const net = gross.times(keepBps).dividedBy(10000);
       if (net.lte(0)) continue;
-      await this.upsertCommission(orderId, vendor.userId, BeneficiaryType.VENDOR, net);
+      await this.upsertCommission(
+        orderId,
+        vendor.userId,
+        BeneficiaryType.VENDOR,
+        net,
+      );
     }
     this.logger.log(`Vendor commissions accrued for order ${orderId}`);
   }
 
-  private async accrueAffiliate(order: { id: string; affiliateCode: string | null }) {
+  private async accrueAffiliate(order: {
+    id: string;
+    affiliateCode: string | null;
+  }) {
     if (!order.affiliateCode) return;
 
     const affiliate = await this.prisma.affiliateProfile.findUnique({
@@ -112,7 +127,9 @@ export class CommissionsService {
     } else if (order.influencerCode) {
       const inf = await this.prisma.influencerProfile.findUnique({
         where: { influencerCode: order.influencerCode },
-        include: { campaignAssignments: { orderBy: { assignedAt: 'desc' }, take: 1 } },
+        include: {
+          campaignAssignments: { orderBy: { assignedAt: 'desc' }, take: 1 },
+        },
       });
       if (inf?.isApproved) {
         influencerUserId = inf.userId;
@@ -125,7 +142,12 @@ export class CommissionsService {
     const amount = await this.influencerAmount(campaignId, order.subtotal);
     if (amount.lte(0)) return;
 
-    await this.upsertCommission(order.id, influencerUserId, BeneficiaryType.INFLUENCER, amount);
+    await this.upsertCommission(
+      order.id,
+      influencerUserId,
+      BeneficiaryType.INFLUENCER,
+      amount,
+    );
 
     // Count the sale against the creator's assignment. Without this,
     // CampaignAssignment.conversions stays 0 forever even though it is what the
@@ -146,7 +168,9 @@ export class CommissionsService {
     subtotal: Prisma.Decimal,
   ): Promise<Prisma.Decimal> {
     if (!campaignId) return new Prisma.Decimal(0);
-    const campaign = await this.prisma.campaign.findUnique({ where: { id: campaignId } });
+    const campaign = await this.prisma.campaign.findUnique({
+      where: { id: campaignId },
+    });
     if (!campaign) return new Prisma.Decimal(0);
 
     if (campaign.payoutModel === PayoutModel.FLAT) {
@@ -165,7 +189,13 @@ export class CommissionsService {
   ) {
     return this.prisma.commissionRecord.upsert({
       where: { orderId_beneficiaryId: { orderId, beneficiaryId } },
-      create: { orderId, beneficiaryId, beneficiaryType, amount, status: CommissionStatus.PENDING },
+      create: {
+        orderId,
+        beneficiaryId,
+        beneficiaryType,
+        amount,
+        status: CommissionStatus.PENDING,
+      },
       // Never overwrite an already-progressed commission (confirmed/disbursed).
       update: {},
     });
@@ -176,18 +206,33 @@ export class CommissionsService {
    * already CONFIRMED/QUEUED was credited to the wallet, so its credit is
    * clawed back with a matching DEBIT.
    */
-  async voidForOrder(orderId: string, tx?: Prisma.TransactionClient): Promise<void> {
+  async voidForOrder(
+    orderId: string,
+    tx?: Prisma.TransactionClient,
+  ): Promise<void> {
     const db = tx ?? this.prisma;
     const records = await db.commissionRecord.findMany({
       where: {
         orderId,
-        status: { in: [CommissionStatus.PENDING, CommissionStatus.CONFIRMED, CommissionStatus.QUEUED] },
+        status: {
+          in: [
+            CommissionStatus.PENDING,
+            CommissionStatus.CONFIRMED,
+            CommissionStatus.QUEUED,
+          ],
+        },
       },
     });
 
     for (const c of records) {
       if (c.status !== CommissionStatus.PENDING) {
-        await this.ledger.debit(c.beneficiaryId, c.amount, 'commission-void', c.id, db);
+        await this.ledger.debit(
+          c.beneficiaryId,
+          c.amount,
+          'commission-void',
+          c.id,
+          db,
+        );
       }
       await db.commissionRecord.update({
         where: { id: c.id },
@@ -217,7 +262,12 @@ export class CommissionsService {
         continue;
       }
       if (c.beneficiaryType === BeneficiaryType.INFLUENCER) {
-        if (!(await this.influencerHasApprovedPost(c.beneficiaryId, c.order.promoCode))) {
+        if (
+          !(await this.influencerHasApprovedPost(
+            c.beneficiaryId,
+            c.order.promoCode,
+          ))
+        ) {
           continue; // not payout-eligible yet
         }
       }
@@ -227,7 +277,13 @@ export class CommissionsService {
           where: { id: c.id },
           data: { status: CommissionStatus.CONFIRMED, confirmedAt: new Date() },
         });
-        await this.ledger.credit(c.beneficiaryId, c.amount, 'commission', c.id, tx);
+        await this.ledger.credit(
+          c.beneficiaryId,
+          c.amount,
+          'commission',
+          c.id,
+          tx,
+        );
       });
       confirmed++;
     }
@@ -240,7 +296,9 @@ export class CommissionsService {
     promoCode: string | null,
   ): Promise<boolean> {
     if (!promoCode) return false;
-    const promo = await this.prisma.promoCode.findUnique({ where: { code: promoCode } });
+    const promo = await this.prisma.promoCode.findUnique({
+      where: { code: promoCode },
+    });
     if (!promo?.campaignId) return false;
 
     const influencer = await this.prisma.influencerProfile.findUnique({
@@ -252,7 +310,10 @@ export class CommissionsService {
       where: {
         status: SubmissionStatus.APPROVED,
         hasAdDisclosure: true,
-        assignment: { campaignId: promo.campaignId, influencerId: influencer.id },
+        assignment: {
+          campaignId: promo.campaignId,
+          influencerId: influencer.id,
+        },
       },
     });
     return !!approved;

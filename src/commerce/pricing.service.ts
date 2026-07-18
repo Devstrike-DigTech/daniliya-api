@@ -39,7 +39,9 @@ export class PricingService {
 
     // Pickup pays no delivery fee. Tax applies to every order.
     const deliveryFee =
-      mode === FulfilmentMode.DELIVERY ? this.config.getDecimal('DELIVERY_FEE') : new Prisma.Decimal(0);
+      mode === FulfilmentMode.DELIVERY
+        ? this.config.getDecimal('DELIVERY_FEE')
+        : new Prisma.Decimal(0);
     const tax = this.config.getDecimal('TAX');
 
     const total = subtotal.plus(giftAddon).plus(deliveryFee).plus(tax);

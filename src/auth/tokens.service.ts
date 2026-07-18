@@ -38,14 +38,18 @@ export class TokensService {
 
     const accessToken = await this.jwt.signAsync(payload, {
       secret: this.config.getOrThrow<string>('JWT_ACCESS_SECRET'),
-      expiresIn: this.config.getOrThrow<string>('JWT_ACCESS_EXPIRES_IN') as ExpiresIn,
+      expiresIn: this.config.getOrThrow<string>(
+        'JWT_ACCESS_EXPIRES_IN',
+      ) as ExpiresIn,
     });
 
     const refreshToken = await this.jwt.signAsync(
       { ...payload, jti },
       {
         secret: this.config.getOrThrow<string>('JWT_REFRESH_SECRET'),
-        expiresIn: this.config.getOrThrow<string>('JWT_REFRESH_EXPIRES_IN') as ExpiresIn,
+        expiresIn: this.config.getOrThrow<string>(
+          'JWT_REFRESH_EXPIRES_IN',
+        ) as ExpiresIn,
       },
     );
 

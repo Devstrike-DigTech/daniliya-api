@@ -24,11 +24,16 @@ export class KycService {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user) throw new NotFoundException('User not found');
 
-    const existing = await this.prisma.kycSubmission.findUnique({ where: { userId } });
+    const existing = await this.prisma.kycSubmission.findUnique({
+      where: { userId },
+    });
     if (existing?.status === KycStatus.VERIFIED) {
       throw new BadRequestException('Your identity is already verified');
     }
-    if (existing?.status === KycStatus.SUBMITTED || existing?.status === KycStatus.PENDING_MANUAL) {
+    if (
+      existing?.status === KycStatus.SUBMITTED ||
+      existing?.status === KycStatus.PENDING_MANUAL
+    ) {
       throw new BadRequestException('Your KYC is already under review');
     }
 
@@ -94,7 +99,9 @@ export class KycService {
   async mine(userId: string) {
     const record = await this.prisma.kycSubmission.findUnique({
       where: { userId },
-      include: { bankAccount: { select: { bankName: true, accountName: true } } },
+      include: {
+        bankAccount: { select: { bankName: true, accountName: true } },
+      },
     });
     if (!record) {
       return { status: KycStatus.PENDING, submitted: false };
@@ -110,7 +117,9 @@ export class KycService {
     reason?: string,
     ip?: string,
   ) {
-    const record = await this.prisma.kycSubmission.findUnique({ where: { id } });
+    const record = await this.prisma.kycSubmission.findUnique({
+      where: { id },
+    });
     if (!record) throw new NotFoundException('KYC submission not found');
     if (record.status === KycStatus.VERIFIED) {
       throw new BadRequestException('Already verified');
@@ -155,10 +164,22 @@ export class KycService {
 
   listForReview(status?: KycStatus) {
     return this.prisma.kycSubmission.findMany({
-      where: { status: status ?? { in: [KycStatus.SUBMITTED, KycStatus.PENDING_MANUAL] } },
+      where: {
+        status: status ?? {
+          in: [KycStatus.SUBMITTED, KycStatus.PENDING_MANUAL],
+        },
+      },
       orderBy: { submittedAt: 'asc' },
       include: {
-        user: { select: { id: true, firstName: true, lastName: true, email: true, role: true } },
+        user: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            email: true,
+            role: true,
+          },
+        },
         bankAccount: { select: { bankName: true, accountName: true } },
       },
     });

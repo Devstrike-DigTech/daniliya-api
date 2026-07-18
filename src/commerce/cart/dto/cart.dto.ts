@@ -1,5 +1,13 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsBoolean, IsInt, IsOptional, IsString, IsUUID, Max, Min } from 'class-validator';
+import {
+  IsBoolean,
+  IsInt,
+  IsOptional,
+  IsString,
+  IsUUID,
+  Max,
+  Min,
+} from 'class-validator';
 
 export class AddCartItemDto {
   @ApiProperty()
@@ -13,12 +21,16 @@ export class AddCartItemDto {
   @Max(99)
   quantity?: number;
 
-  @ApiPropertyOptional({ description: 'Signature gift packaging (+fee per item)' })
+  @ApiPropertyOptional({
+    description: 'Signature gift packaging (+fee per item)',
+  })
   @IsOptional()
   @IsBoolean()
   giftWrap?: boolean;
 
-  @ApiPropertyOptional({ description: 'Recipient name / note when gift-wrapped' })
+  @ApiPropertyOptional({
+    description: 'Recipient name / note when gift-wrapped',
+  })
   @IsOptional()
   @IsString()
   giftMessage?: string;

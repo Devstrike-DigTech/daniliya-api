@@ -12,8 +12,21 @@ import { VendorProductsController } from './products/vendor-products.controller'
 import { VendorProductsService } from './products/vendor-products.service';
 
 @Module({
-  controllers: [ProductsController, VendorProductsController, CartController, OrdersController, AdminOrdersController],
-  providers: [ProductsService, VendorProductsService, CartService, OrdersService, AdminOrdersService, PricingService],
+  controllers: [
+    ProductsController,
+    VendorProductsController,
+    CartController,
+    OrdersController,
+    AdminOrdersController,
+  ],
+  providers: [
+    ProductsService,
+    VendorProductsService,
+    CartService,
+    OrdersService,
+    AdminOrdersService,
+    PricingService,
+  ],
   exports: [PricingService],
 })
 export class CommerceModule {}

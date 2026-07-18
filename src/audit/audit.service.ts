@@ -62,7 +62,9 @@ export class AuditService {
   }) {
     const where: Prisma.AuditLogWhereInput = {
       ...(params.actorId && { actorId: params.actorId }),
-      ...(params.action && { action: { contains: params.action, mode: 'insensitive' } }),
+      ...(params.action && {
+        action: { contains: params.action, mode: 'insensitive' },
+      }),
       ...(params.targetType && { targetType: params.targetType }),
       ...(params.targetId && { targetId: params.targetId }),
     };
@@ -76,7 +78,9 @@ export class AuditService {
         skip: params.skip ?? 0,
         take,
         include: {
-          actor: { select: { id: true, firstName: true, lastName: true, email: true } },
+          actor: {
+            select: { id: true, firstName: true, lastName: true, email: true },
+          },
         },
       }),
       this.prisma.auditLog.count({ where }),

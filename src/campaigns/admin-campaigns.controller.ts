@@ -1,11 +1,24 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Param, Post, Req } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Param,
+  Post,
+  Req,
+} from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { CampaignStatus, SubmissionStatus } from '@prisma/client';
 import type { Request } from 'express';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Role, Roles } from '../common/decorators/roles.decorator';
 import { CampaignsService } from './campaigns.service';
-import { AssignInfluencersDto, CreateCampaignDto, ReviewSubmissionDto } from './dto/campaign.dto';
+import {
+  AssignInfluencersDto,
+  CreateCampaignDto,
+  ReviewSubmissionDto,
+} from './dto/campaign.dto';
 
 const ipOf = (req: Request) => req.ip ?? undefined;
 
@@ -18,7 +31,11 @@ export class AdminCampaignsController {
 
   @Post()
   @ApiOperation({ summary: 'Create a campaign (FLAT/CPA or COMMISSION)' })
-  create(@Body() dto: CreateCampaignDto, @CurrentUser('id') adminId: string, @Req() req: Request) {
+  create(
+    @Body() dto: CreateCampaignDto,
+    @CurrentUser('id') adminId: string,
+    @Req() req: Request,
+  ) {
     return this.campaigns.create(dto, adminId, ipOf(req));
   }
 
@@ -36,25 +53,54 @@ export class AdminCampaignsController {
 
   @Post(':id/pause')
   @HttpCode(HttpStatus.OK)
-  pause(@Param('id') id: string, @CurrentUser('id') adminId: string, @Req() req: Request) {
-    return this.campaigns.setStatus(id, CampaignStatus.PAUSED, adminId, ipOf(req));
+  pause(
+    @Param('id') id: string,
+    @CurrentUser('id') adminId: string,
+    @Req() req: Request,
+  ) {
+    return this.campaigns.setStatus(
+      id,
+      CampaignStatus.PAUSED,
+      adminId,
+      ipOf(req),
+    );
   }
 
   @Post(':id/resume')
   @HttpCode(HttpStatus.OK)
-  resume(@Param('id') id: string, @CurrentUser('id') adminId: string, @Req() req: Request) {
-    return this.campaigns.setStatus(id, CampaignStatus.ACTIVE, adminId, ipOf(req));
+  resume(
+    @Param('id') id: string,
+    @CurrentUser('id') adminId: string,
+    @Req() req: Request,
+  ) {
+    return this.campaigns.setStatus(
+      id,
+      CampaignStatus.ACTIVE,
+      adminId,
+      ipOf(req),
+    );
   }
 
   @Post(':id/end')
   @HttpCode(HttpStatus.OK)
-  end(@Param('id') id: string, @CurrentUser('id') adminId: string, @Req() req: Request) {
-    return this.campaigns.setStatus(id, CampaignStatus.ENDED, adminId, ipOf(req));
+  end(
+    @Param('id') id: string,
+    @CurrentUser('id') adminId: string,
+    @Req() req: Request,
+  ) {
+    return this.campaigns.setStatus(
+      id,
+      CampaignStatus.ENDED,
+      adminId,
+      ipOf(req),
+    );
   }
 
   @Post(':id/assign')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Assign influencers (issues per-creator promo + UTM)' })
+  @ApiOperation({
+    summary: 'Assign influencers (issues per-creator promo + UTM)',
+  })
   assign(
     @Param('id') id: string,
     @Body() dto: AssignInfluencersDto,
@@ -78,7 +124,13 @@ export class AdminCampaignsController {
     @CurrentUser('id') adminId: string,
     @Req() req: Request,
   ) {
-    return this.campaigns.reviewSubmission(sid, SubmissionStatus.APPROVED, dto, adminId, ipOf(req));
+    return this.campaigns.reviewSubmission(
+      sid,
+      SubmissionStatus.APPROVED,
+      dto,
+      adminId,
+      ipOf(req),
+    );
   }
 
   @Post('submissions/:sid/reject')
@@ -89,6 +141,12 @@ export class AdminCampaignsController {
     @CurrentUser('id') adminId: string,
     @Req() req: Request,
   ) {
-    return this.campaigns.reviewSubmission(sid, SubmissionStatus.REJECTED, dto, adminId, ipOf(req));
+    return this.campaigns.reviewSubmission(
+      sid,
+      SubmissionStatus.REJECTED,
+      dto,
+      adminId,
+      ipOf(req),
+    );
   }
 }

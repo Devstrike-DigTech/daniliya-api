@@ -11,7 +11,9 @@ export class ProductsController {
 
   @Public()
   @Get()
-  @ApiOperation({ summary: 'Browse the public catalogue (active products only)' })
+  @ApiOperation({
+    summary: 'Browse the public catalogue (active products only)',
+  })
   list(@Query() query: CatalogQueryDto) {
     return this.products.list(query);
   }

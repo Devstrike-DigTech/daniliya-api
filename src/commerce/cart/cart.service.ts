@@ -1,4 +1,8 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { FulfilmentMode, ProductStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { PricingService } from '../pricing.service';
@@ -19,7 +23,11 @@ export class CartService {
       update: {},
       include: {
         items: {
-          include: { product: { include: { images: { take: 1, orderBy: { sortOrder: 'asc' } } } } },
+          include: {
+            product: {
+              include: { images: { take: 1, orderBy: { sortOrder: 'asc' } } },
+            },
+          },
           orderBy: { id: 'asc' },
         },
       },
@@ -35,11 +43,17 @@ export class CartService {
       giftWrap: it.giftWrap,
       image: it.product.images[0]?.url ?? null,
       lineTotal: it.product.price.times(it.quantity),
-      available: it.product.status === ProductStatus.ACTIVE && it.product.stockQuantity > 0,
+      available:
+        it.product.status === ProductStatus.ACTIVE &&
+        it.product.stockQuantity > 0,
     }));
 
     const preview = this.pricing.quote(
-      lines.map((l) => ({ unitPrice: l.unitPrice, quantity: l.quantity, giftWrap: l.giftWrap })),
+      lines.map((l) => ({
+        unitPrice: l.unitPrice,
+        quantity: l.quantity,
+        giftWrap: l.giftWrap,
+      })),
       FulfilmentMode.DELIVERY,
     );
 
@@ -47,7 +61,9 @@ export class CartService {
   }
 
   async addItem(userId: string, dto: AddCartItemDto) {
-    const product = await this.prisma.product.findUnique({ where: { id: dto.productId } });
+    const product = await this.prisma.product.findUnique({
+      where: { id: dto.productId },
+    });
     if (!product || product.status !== ProductStatus.ACTIVE) {
       throw new NotFoundException('Product not available');
     }
@@ -63,7 +79,9 @@ export class CartService {
 
     // Adding an existing product increments quantity (idempotent add-to-cart).
     await this.prisma.cartItem.upsert({
-      where: { cartId_productId: { cartId: cart.id, productId: dto.productId } },
+      where: {
+        cartId_productId: { cartId: cart.id, productId: dto.productId },
+      },
       create: {
         cartId: cart.id,
         productId: dto.productId,
@@ -101,7 +119,8 @@ export class CartService {
 
   async clear(userId: string) {
     const cart = await this.prisma.cart.findUnique({ where: { userId } });
-    if (cart) await this.prisma.cartItem.deleteMany({ where: { cartId: cart.id } });
+    if (cart)
+      await this.prisma.cartItem.deleteMany({ where: { cartId: cart.id } });
     return this.get(userId);
   }
 

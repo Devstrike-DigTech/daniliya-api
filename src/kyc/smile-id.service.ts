@@ -38,7 +38,8 @@ export class SmileIdService {
     const apiKey = this.config.get<string>('SMILE_ID_API_KEY');
     this.isProd = this.config.get<string>('NODE_ENV') === 'production';
 
-    const usable = (v?: string) => !!v && !v.startsWith('change-me') && v.length > 4;
+    const usable = (v?: string) =>
+      !!v && !v.startsWith('change-me') && v.length > 4;
     this.partnerId = usable(partnerId) ? partnerId : undefined;
     this.apiKey = usable(apiKey) ? apiKey : undefined;
 
@@ -58,7 +59,9 @@ export class SmileIdService {
       if (this.isProd) {
         throw new Error('SMILE_ID credentials are required in production');
       }
-      this.logger.warn(`[stub-kyc] submission for user ${input.userId} → manual review`);
+      this.logger.warn(
+        `[stub-kyc] submission for user ${input.userId} → manual review`,
+      );
       return {
         ref: `stub_${randomUUID()}`,
         decided: false,
@@ -71,6 +74,8 @@ export class SmileIdService {
     // POST /webhooks/smile-id carries the decision either way, so the flow
     // below stays identical: submit → PENDING → webhook → VERIFIED/REJECTED.
     this.logger.log(`Submitting KYC for user ${input.userId} to Smile ID`);
-    throw new Error('Smile ID live submission not implemented yet — Phase 2 follow-up');
+    throw new Error(
+      'Smile ID live submission not implemented yet — Phase 2 follow-up',
+    );
   }
 }

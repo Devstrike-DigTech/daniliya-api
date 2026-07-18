@@ -1,5 +1,11 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { CommissionStatus, OrderStatus, PayoutItemStatus, Prisma, ProductStatus } from '@prisma/client';
+import {
+  CommissionStatus,
+  OrderStatus,
+  PayoutItemStatus,
+  Prisma,
+  ProductStatus,
+} from '@prisma/client';
 import { AuditService } from '../audit/audit.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { RejectProductDto } from './dto/admin.dto';
@@ -39,22 +45,50 @@ export class AdminService {
   }
 
   async approveProduct(id: string, adminId: string, ip?: string) {
-    return this.moderateProduct(id, ProductStatus.ACTIVE, undefined, adminId, ip);
+    return this.moderateProduct(
+      id,
+      ProductStatus.ACTIVE,
+      undefined,
+      adminId,
+      ip,
+    );
   }
-  async rejectProduct(id: string, dto: RejectProductDto, adminId: string, ip?: string) {
-    return this.moderateProduct(id, ProductStatus.REJECTED, dto.reason, adminId, ip);
+  async rejectProduct(
+    id: string,
+    dto: RejectProductDto,
+    adminId: string,
+    ip?: string,
+  ) {
+    return this.moderateProduct(
+      id,
+      ProductStatus.REJECTED,
+      dto.reason,
+      adminId,
+      ip,
+    );
   }
 
-  private async moderateProduct(id: string, to: ProductStatus, reason: string | undefined, adminId: string, ip?: string) {
+  private async moderateProduct(
+    id: string,
+    to: ProductStatus,
+    reason: string | undefined,
+    adminId: string,
+    ip?: string,
+  ) {
     const product = await this.prisma.product.findUnique({ where: { id } });
     if (!product) throw new NotFoundException('Product not found');
     const updated = await this.prisma.product.update({
       where: { id },
-      data: { status: to, rejectedReason: to === ProductStatus.REJECTED ? (reason ?? 'Rejected') : null },
+      data: {
+        status: to,
+        rejectedReason:
+          to === ProductStatus.REJECTED ? (reason ?? 'Rejected') : null,
+      },
     });
     await this.audit.record({
       actorId: adminId,
-      action: to === ProductStatus.ACTIVE ? 'Approved product' : 'Rejected product',
+      action:
+        to === ProductStatus.ACTIVE ? 'Approved product' : 'Rejected product',
       targetType: 'Product',
       targetId: id,
       before: { status: product.status },
@@ -67,20 +101,38 @@ export class AdminService {
   // ── Command centre ────────────────────────────────────────────────────
 
   async overview() {
-    const paidStatuses = [OrderStatus.CONFIRMED, OrderStatus.SHIPPED, OrderStatus.DELIVERED, OrderStatus.COMPLETED];
+    const paidStatuses = [
+      OrderStatus.CONFIRMED,
+      OrderStatus.SHIPPED,
+      OrderStatus.DELIVERED,
+      OrderStatus.COMPLETED,
+    ];
     const [gmv, orders, users, pendingPayout, attribution] = await Promise.all([
-      this.prisma.order.aggregate({ where: { status: { in: paidStatuses } }, _sum: { total: true } }),
+      this.prisma.order.aggregate({
+        where: { status: { in: paidStatuses } },
+        _sum: { total: true },
+      }),
       this.prisma.order.count(),
       this.prisma.user.count(),
-      this.prisma.payoutItem.aggregate({ where: { status: PayoutItemStatus.PENDING }, _sum: { amount: true } }),
-      this.prisma.order.groupBy({ by: ['channel'], _count: true, where: { status: { in: paidStatuses } } }),
+      this.prisma.payoutItem.aggregate({
+        where: { status: PayoutItemStatus.PENDING },
+        _sum: { amount: true },
+      }),
+      this.prisma.order.groupBy({
+        by: ['channel'],
+        _count: true,
+        where: { status: { in: paidStatuses } },
+      }),
     ]);
     return {
       gmv: gmv._sum.total ?? new Prisma.Decimal(0),
       orders,
       users,
       pendingPayouts: pendingPayout._sum.amount ?? new Prisma.Decimal(0),
-      attribution: attribution.map((a) => ({ channel: a.channel, orders: a._count })),
+      attribution: attribution.map((a) => ({
+        channel: a.channel,
+        orders: a._count,
+      })),
     };
   }
 
@@ -88,25 +140,45 @@ export class AdminService {
 
   async financeStats() {
     const [commissionsPaid, commissionsPending, disbursed] = await Promise.all([
-      this.prisma.commissionRecord.aggregate({ where: { status: CommissionStatus.DISBURSED }, _sum: { amount: true } }),
-      this.prisma.commissionRecord.aggregate({ where: { status: { in: [CommissionStatus.CONFIRMED, CommissionStatus.QUEUED] } }, _sum: { amount: true } }),
-      this.prisma.payoutBatch.aggregate({ where: { status: 'PAID' }, _sum: { totalAmount: true } }),
+      this.prisma.commissionRecord.aggregate({
+        where: { status: CommissionStatus.DISBURSED },
+        _sum: { amount: true },
+      }),
+      this.prisma.commissionRecord.aggregate({
+        where: {
+          status: { in: [CommissionStatus.CONFIRMED, CommissionStatus.QUEUED] },
+        },
+        _sum: { amount: true },
+      }),
+      this.prisma.payoutBatch.aggregate({
+        where: { status: 'PAID' },
+        _sum: { totalAmount: true },
+      }),
     ]);
     return {
       totalPaidOut: disbursed._sum.totalAmount ?? new Prisma.Decimal(0),
-      commissionsDisbursed: commissionsPaid._sum.amount ?? new Prisma.Decimal(0),
+      commissionsDisbursed:
+        commissionsPaid._sum.amount ?? new Prisma.Decimal(0),
       commissionsOwed: commissionsPending._sum.amount ?? new Prisma.Decimal(0),
     };
   }
 
   // ── Audit log ─────────────────────────────────────────────────────────
 
-  async auditLog(query: { actor?: string; action?: string; target?: string; page?: number; limit?: number }) {
+  async auditLog(query: {
+    actor?: string;
+    action?: string;
+    target?: string;
+    page?: number;
+    limit?: number;
+  }) {
     const page = Math.max(1, query.page ?? 1);
     const limit = Math.min(100, Math.max(1, query.limit ?? 50));
     const where: Prisma.AuditLogWhereInput = {
       ...(query.actor ? { actorId: query.actor } : {}),
-      ...(query.action ? { action: { contains: query.action, mode: 'insensitive' } } : {}),
+      ...(query.action
+        ? { action: { contains: query.action, mode: 'insensitive' } }
+        : {}),
       ...(query.target ? { targetType: query.target } : {}),
     };
     const [rows, total] = await Promise.all([

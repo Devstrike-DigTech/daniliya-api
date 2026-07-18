@@ -12,7 +12,9 @@ export class AffiliateController {
   constructor(private readonly affiliate: AffiliateService) {}
 
   @Get('overview')
-  @ApiOperation({ summary: 'KPIs — lifetime earnings, pending, tier, conversions' })
+  @ApiOperation({
+    summary: 'KPIs — lifetime earnings, pending, tier, conversions',
+  })
   overview(@CurrentUser('id') userId: string) {
     return this.affiliate.overview(userId);
   }

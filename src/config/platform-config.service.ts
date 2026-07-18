@@ -27,7 +27,11 @@ export class PlatformConfigService implements OnApplicationBootstrap {
   async onApplicationBootstrap() {
     // Seed any missing keys, then load all persisted values into the cache.
     for (const [key, value] of Object.entries(DEFAULTS)) {
-      await this.prisma.platformConfig.upsert({ where: { key }, create: { key, value }, update: {} });
+      await this.prisma.platformConfig.upsert({
+        where: { key },
+        create: { key, value },
+        update: {},
+      });
     }
     const rows = await this.prisma.platformConfig.findMany();
     for (const r of rows) this.cache.set(r.key, r.value);
@@ -39,7 +43,10 @@ export class PlatformConfigService implements OnApplicationBootstrap {
   }
 
   all() {
-    return Object.keys(DEFAULTS).map((key) => ({ key, value: this.cache.get(key) ?? DEFAULTS[key] }));
+    return Object.keys(DEFAULTS).map((key) => ({
+      key,
+      value: this.cache.get(key) ?? DEFAULTS[key],
+    }));
   }
 
   async update(updates: Record<string, string>) {
@@ -52,7 +59,11 @@ export class PlatformConfigService implements OnApplicationBootstrap {
       } catch {
         continue;
       }
-      await this.prisma.platformConfig.upsert({ where: { key }, create: { key, value }, update: { value } });
+      await this.prisma.platformConfig.upsert({
+        where: { key },
+        create: { key, value },
+        update: { value },
+      });
       this.cache.set(key, value);
       applied.push({ key, value });
     }

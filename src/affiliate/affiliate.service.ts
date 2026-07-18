@@ -1,5 +1,10 @@
 import { ForbiddenException, Injectable } from '@nestjs/common';
-import { BeneficiaryType, CommissionStatus, OrderStatus, Prisma } from '@prisma/client';
+import {
+  BeneficiaryType,
+  CommissionStatus,
+  OrderStatus,
+  Prisma,
+} from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 
 const DOMAIN = 'https://daniliya.com';
@@ -11,7 +16,11 @@ const EARNED_STATES = [
   CommissionStatus.DISBURSED,
 ];
 /** Owed but not yet paid out. */
-const UNPAID_STATES = [CommissionStatus.PENDING, CommissionStatus.CONFIRMED, CommissionStatus.QUEUED];
+const UNPAID_STATES = [
+  CommissionStatus.PENDING,
+  CommissionStatus.CONFIRMED,
+  CommissionStatus.QUEUED,
+];
 
 @Injectable()
 export class AffiliateService {
@@ -23,7 +32,11 @@ export class AffiliateService {
       this.sum(userId, EARNED_STATES),
       this.sum(userId, UNPAID_STATES),
       this.prisma.commissionRecord.count({
-        where: { beneficiaryId: userId, beneficiaryType: BeneficiaryType.AFFILIATE, status: { not: CommissionStatus.VOIDED } },
+        where: {
+          beneficiaryId: userId,
+          beneficiaryType: BeneficiaryType.AFFILIATE,
+          status: { not: CommissionStatus.VOIDED },
+        },
       }),
     ]);
     return {
@@ -58,16 +71,27 @@ export class AffiliateService {
   async earnings(userId: string) {
     await this.profileOrThrow(userId);
     const rows = await this.prisma.commissionRecord.findMany({
-      where: { beneficiaryId: userId, beneficiaryType: BeneficiaryType.AFFILIATE },
-      include: { order: { select: { ref: true, total: true, createdAt: true } } },
+      where: {
+        beneficiaryId: userId,
+        beneficiaryType: BeneficiaryType.AFFILIATE,
+      },
+      include: {
+        order: { select: { ref: true, total: true, createdAt: true } },
+      },
       orderBy: { createdAt: 'desc' },
     });
-    const commission = rows.filter((r) => r.status !== CommissionStatus.VOIDED)
+    const commission = rows
+      .filter((r) => r.status !== CommissionStatus.VOIDED)
       .reduce((s, r) => s.plus(r.amount), new Prisma.Decimal(0));
-    const gmv = rows.filter((r) => r.status !== CommissionStatus.VOIDED)
+    const gmv = rows
+      .filter((r) => r.status !== CommissionStatus.VOIDED)
       .reduce((s, r) => s.plus(r.order.total), new Prisma.Decimal(0));
     return {
-      summary: { grossGmv: gmv, commissionEarned: commission, transactions: rows.length },
+      summary: {
+        grossGmv: gmv,
+        commissionEarned: commission,
+        transactions: rows.length,
+      },
       records: rows.map((r) => ({
         order: r.order.ref,
         sale: r.order.total,
@@ -83,15 +107,28 @@ export class AffiliateService {
     if (!p.referralCode) return { summary: { customers: 0 }, rows: [] };
 
     const orders = await this.prisma.order.findMany({
-      where: { affiliateCode: p.referralCode, status: { not: OrderStatus.CANCELLED } },
-      include: { customer: { select: { id: true, firstName: true, lastName: true } } },
+      where: {
+        affiliateCode: p.referralCode,
+        status: { not: OrderStatus.CANCELLED },
+      },
+      include: {
+        customer: { select: { id: true, firstName: true, lastName: true } },
+      },
     });
 
     // Group by customer.
-    const byCustomer = new Map<string, { name: string; orders: number; spend: Prisma.Decimal; last: Date }>();
+    const byCustomer = new Map<
+      string,
+      { name: string; orders: number; spend: Prisma.Decimal; last: Date }
+    >();
     for (const o of orders) {
       const key = o.customer.id;
-      const g = byCustomer.get(key) ?? { name: `${o.customer.firstName} ${o.customer.lastName}`, orders: 0, spend: new Prisma.Decimal(0), last: o.createdAt };
+      const g = byCustomer.get(key) ?? {
+        name: `${o.customer.firstName} ${o.customer.lastName}`,
+        orders: 0,
+        spend: new Prisma.Decimal(0),
+        last: o.createdAt,
+      };
       g.orders += 1;
       g.spend = g.spend.plus(o.total);
       if (o.createdAt > g.last) g.last = o.createdAt;
@@ -107,11 +144,17 @@ export class AffiliateService {
     // Lifetime confirmed+ earnings per affiliate.
     const grouped = await this.prisma.commissionRecord.groupBy({
       by: ['beneficiaryId'],
-      where: { beneficiaryType: BeneficiaryType.AFFILIATE, status: { in: EARNED_STATES } },
+      where: {
+        beneficiaryType: BeneficiaryType.AFFILIATE,
+        status: { in: EARNED_STATES },
+      },
       _sum: { amount: true },
     });
     const ranked = grouped
-      .map((g) => ({ userId: g.beneficiaryId, earned: g._sum.amount ?? new Prisma.Decimal(0) }))
+      .map((g) => ({
+        userId: g.beneficiaryId,
+        earned: g._sum.amount ?? new Prisma.Decimal(0),
+      }))
       .sort((a, b) => (b.earned.greaterThan(a.earned) ? 1 : -1));
 
     const profiles = await this.prisma.affiliateProfile.findMany({
@@ -134,14 +177,20 @@ export class AffiliateService {
   // ── Internals ─────────────────────────────────────────────────────────
 
   private async profileOrThrow(userId: string) {
-    const p = await this.prisma.affiliateProfile.findUnique({ where: { userId } });
+    const p = await this.prisma.affiliateProfile.findUnique({
+      where: { userId },
+    });
     if (!p) throw new ForbiddenException('Not an affiliate');
     return p;
   }
 
   private async sum(userId: string, statuses: CommissionStatus[]) {
     const agg = await this.prisma.commissionRecord.aggregate({
-      where: { beneficiaryId: userId, beneficiaryType: BeneficiaryType.AFFILIATE, status: { in: statuses } },
+      where: {
+        beneficiaryId: userId,
+        beneficiaryType: BeneficiaryType.AFFILIATE,
+        status: { in: statuses },
+      },
       _sum: { amount: true },
     });
     return agg._sum.amount ?? new Prisma.Decimal(0);

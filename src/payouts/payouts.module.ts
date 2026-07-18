@@ -1,5 +1,8 @@
 import { Module } from '@nestjs/common';
-import { AdminPayoutsController, MyPayoutsController } from './payouts.controller';
+import {
+  AdminPayoutsController,
+  MyPayoutsController,
+} from './payouts.controller';
 import { PayoutsService } from './payouts.service';
 
 @Module({

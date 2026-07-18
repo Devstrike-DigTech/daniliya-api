@@ -1,4 +1,9 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { Prisma, ProductStatus } from '@prisma/client';
 import { randomBytes } from 'crypto';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -43,9 +48,15 @@ export class VendorProductsService {
       where: { id },
       data: {
         ...(dto.title !== undefined ? { title: dto.title } : {}),
-        ...(dto.description !== undefined ? { description: dto.description } : {}),
-        ...(dto.price !== undefined ? { price: new Prisma.Decimal(dto.price) } : {}),
-        ...(dto.stockQuantity !== undefined ? { stockQuantity: dto.stockQuantity } : {}),
+        ...(dto.description !== undefined
+          ? { description: dto.description }
+          : {}),
+        ...(dto.price !== undefined
+          ? { price: new Prisma.Decimal(dto.price) }
+          : {}),
+        ...(dto.stockQuantity !== undefined
+          ? { stockQuantity: dto.stockQuantity }
+          : {}),
         ...(dto.category !== undefined ? { category: dto.category } : {}),
       },
     });
@@ -55,9 +66,14 @@ export class VendorProductsService {
   async remove(userId: string, id: string) {
     const product = await this.ownedProductOrThrow(userId, id);
     // Don't hard-delete a product that has order history — soft-remove instead.
-    const soldBefore = await this.prisma.orderItem.count({ where: { productId: id } });
+    const soldBefore = await this.prisma.orderItem.count({
+      where: { productId: id },
+    });
     if (soldBefore > 0) {
-      await this.prisma.product.update({ where: { id }, data: { status: ProductStatus.REMOVED } });
+      await this.prisma.product.update({
+        where: { id },
+        data: { status: ProductStatus.REMOVED },
+      });
       return { id, removed: 'soft' };
     }
     await this.prisma.product.delete({ where: { id } });
@@ -67,8 +83,13 @@ export class VendorProductsService {
   /** DRAFT → PENDING_REVIEW (admin then approves to ACTIVE). */
   async submit(userId: string, id: string) {
     const product = await this.ownedProductOrThrow(userId, id);
-    if (product.status !== ProductStatus.DRAFT && product.status !== ProductStatus.REJECTED) {
-      throw new BadRequestException(`Only a draft or rejected product can be submitted (is ${product.status})`);
+    if (
+      product.status !== ProductStatus.DRAFT &&
+      product.status !== ProductStatus.REJECTED
+    ) {
+      throw new BadRequestException(
+        `Only a draft or rejected product can be submitted (is ${product.status})`,
+      );
     }
     const updated = await this.prisma.product.update({
       where: { id },
@@ -80,7 +101,9 @@ export class VendorProductsService {
   // ── Internals ─────────────────────────────────────────────────────────
 
   private async vendorOrThrow(userId: string) {
-    const vendor = await this.prisma.vendorProfile.findUnique({ where: { userId } });
+    const vendor = await this.prisma.vendorProfile.findUnique({
+      where: { userId },
+    });
     if (!vendor) throw new ForbiddenException('Not a vendor');
     return vendor;
   }
@@ -88,15 +111,22 @@ export class VendorProductsService {
   private async ownedProductOrThrow(userId: string, id: string) {
     const vendor = await this.vendorOrThrow(userId);
     const product = await this.prisma.product.findUnique({ where: { id } });
-    if (!product || product.vendorId !== vendor.id) throw new NotFoundException('Product not found');
+    if (!product || product.vendorId !== vendor.id)
+      throw new NotFoundException('Product not found');
     return product;
   }
 
   private async uniqueSlug(title: string): Promise<string> {
-    const base = title.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || 'product';
+    const base =
+      title
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/(^-|-$)/g, '') || 'product';
     for (let i = 0; i < 10; i++) {
       const slug = i === 0 ? base : `${base}-${randomBytes(2).toString('hex')}`;
-      if (!(await this.prisma.product.findUnique({ where: { slug } }))) return slug;
+      if (!(await this.prisma.product.findUnique({ where: { slug } })))
+        return slug;
     }
     return `${base}-${randomBytes(4).toString('hex')}`;
   }

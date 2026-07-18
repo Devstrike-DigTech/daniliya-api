@@ -27,7 +27,8 @@ export class PaystackService {
     const key = this.config.get<string>('PAYSTACK_SECRET_KEY');
     // A real Paystack secret is `sk_test_`/`sk_live_` + 40 hex (~48 chars).
     // Anything shorter is a placeholder — don't attempt live calls with it.
-    this.secretKey = key && /^sk_(test|live)_[a-z0-9]{32,}$/i.test(key) ? key : undefined;
+    this.secretKey =
+      key && /^sk_(test|live)_[a-z0-9]{32,}$/i.test(key) ? key : undefined;
     this.isProd = this.config.get<string>('NODE_ENV') === 'production';
     if (!this.secretKey) {
       this.logger.warn(
@@ -52,7 +53,8 @@ export class PaystackService {
     callbackUrl?: string;
   }): Promise<InitResult> {
     if (!this.secretKey) {
-      if (this.isProd) throw new Error('PAYSTACK_SECRET_KEY is required in production');
+      if (this.isProd)
+        throw new Error('PAYSTACK_SECRET_KEY is required in production');
       return {
         authorizationUrl: `https://checkout.simulated/pay/${input.reference}`,
         reference: input.reference,
@@ -84,7 +86,9 @@ export class PaystackService {
       const reason = axios.isAxiosError(err)
         ? JSON.stringify(err.response?.data ?? err.message)
         : String(err);
-      this.logger.warn(`Paystack init rejected (${reason}) — simulating instead.`);
+      this.logger.warn(
+        `Paystack init rejected (${reason}) — simulating instead.`,
+      );
       return {
         authorizationUrl: `https://checkout.simulated/pay/${input.reference}`,
         reference: input.reference,
@@ -106,7 +110,8 @@ export class PaystackService {
     idempotencyKey: string;
   }): Promise<{ reference: string; simulated: boolean }> {
     if (!this.secretKey) {
-      if (this.isProd) throw new Error('PAYSTACK_SECRET_KEY is required in production');
+      if (this.isProd)
+        throw new Error('PAYSTACK_SECRET_KEY is required in production');
       return { reference: input.reference, simulated: true };
     }
 
@@ -132,7 +137,12 @@ export class PaystackService {
           reference: input.reference,
           reason: input.reason,
         },
-        { headers: { ...auth.headers, 'X-Idempotency-Key': input.idempotencyKey } },
+        {
+          headers: {
+            ...auth.headers,
+            'X-Idempotency-Key': input.idempotencyKey,
+          },
+        },
       );
       return { reference: input.reference, simulated: false };
     } catch (err) {
@@ -148,7 +158,8 @@ export class PaystackService {
    * tests exercise the real verification path.
    */
   verifySignature(rawBody: Buffer, signature?: string): boolean {
-    const key = this.secretKey ?? this.config.get<string>('PAYSTACK_SECRET_KEY');
+    const key =
+      this.secretKey ?? this.config.get<string>('PAYSTACK_SECRET_KEY');
     if (!key || !signature) return false;
     const expected = createHmac('sha512', key).update(rawBody).digest('hex');
     const a = Buffer.from(expected);
@@ -158,7 +169,8 @@ export class PaystackService {
 
   /** Test helper — sign a payload the way Paystack would (used by local e2e). */
   signForTest(rawBody: Buffer): string {
-    const key = this.secretKey ?? this.config.getOrThrow<string>('PAYSTACK_SECRET_KEY');
+    const key =
+      this.secretKey ?? this.config.getOrThrow<string>('PAYSTACK_SECRET_KEY');
     return createHmac('sha512', key).update(rawBody).digest('hex');
   }
 

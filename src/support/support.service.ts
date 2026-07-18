@@ -1,4 +1,8 @@
-import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { SupportTicket, TicketMessage, TicketStatus } from '@prisma/client';
 import { randomBytes } from 'crypto';
 import { AuditService } from '../audit/audit.service';
@@ -21,7 +25,9 @@ export class SupportService {
         openedById: userId,
         subject: dto.subject,
         priority: dto.priority ?? 'NORMAL',
-        messages: { create: { authorId: userId, fromAdmin: false, body: dto.body } },
+        messages: {
+          create: { authorId: userId, fromAdmin: false, body: dto.body },
+        },
       },
     });
     return this.present(ticket);
@@ -37,14 +43,24 @@ export class SupportService {
 
   async myTicket(userId: string, ref: string) {
     const ticket = await this.loadWithMessages(ref);
-    if (ticket.openedById !== userId) throw new NotFoundException('Ticket not found');
+    if (ticket.openedById !== userId)
+      throw new NotFoundException('Ticket not found');
     return this.presentWithThread(ticket);
   }
 
   async userReply(userId: string, ref: string, dto: TicketReplyDto) {
-    const ticket = await this.prisma.supportTicket.findUnique({ where: { ref } });
-    if (!ticket || ticket.openedById !== userId) throw new NotFoundException('Ticket not found');
-    return this.addMessage(ticket.id, userId, false, dto.body, TicketStatus.OPEN);
+    const ticket = await this.prisma.supportTicket.findUnique({
+      where: { ref },
+    });
+    if (!ticket || ticket.openedById !== userId)
+      throw new NotFoundException('Ticket not found');
+    return this.addMessage(
+      ticket.id,
+      userId,
+      false,
+      dto.body,
+      TicketStatus.OPEN,
+    );
   }
 
   // ── Admin ─────────────────────────────────────────────────────────────
@@ -55,7 +71,10 @@ export class SupportService {
       include: { openedBy: { select: { firstName: true, lastName: true } } },
       orderBy: { updatedAt: 'desc' },
     });
-    return rows.map((t) => ({ ...this.present(t), from: `${t.openedBy.firstName} ${t.openedBy.lastName}` }));
+    return rows.map((t) => ({
+      ...this.present(t),
+      from: `${t.openedBy.firstName} ${t.openedBy.lastName}`,
+    }));
   }
 
   async detail(ref: string) {
@@ -63,35 +82,81 @@ export class SupportService {
   }
 
   async adminReply(adminId: string, ref: string, dto: TicketReplyDto) {
-    const ticket = await this.prisma.supportTicket.findUnique({ where: { ref } });
+    const ticket = await this.prisma.supportTicket.findUnique({
+      where: { ref },
+    });
     if (!ticket) throw new NotFoundException('Ticket not found');
-    return this.addMessage(ticket.id, adminId, true, dto.body, TicketStatus.PENDING);
+    return this.addMessage(
+      ticket.id,
+      adminId,
+      true,
+      dto.body,
+      TicketStatus.PENDING,
+    );
   }
 
   async assign(adminId: string, ref: string, ip?: string) {
-    const ticket = await this.prisma.supportTicket.findUnique({ where: { ref } });
+    const ticket = await this.prisma.supportTicket.findUnique({
+      where: { ref },
+    });
     if (!ticket) throw new NotFoundException('Ticket not found');
-    const updated = await this.prisma.supportTicket.update({ where: { ref }, data: { assignedToId: adminId } });
-    await this.audit.record({ actorId: adminId, action: 'Assigned support ticket', targetType: 'SupportTicket', targetId: ticket.id, ip });
+    const updated = await this.prisma.supportTicket.update({
+      where: { ref },
+      data: { assignedToId: adminId },
+    });
+    await this.audit.record({
+      actorId: adminId,
+      action: 'Assigned support ticket',
+      targetType: 'SupportTicket',
+      targetId: ticket.id,
+      ip,
+    });
     return this.present(updated);
   }
 
   async close(adminId: string, ref: string, ip?: string) {
-    const ticket = await this.prisma.supportTicket.findUnique({ where: { ref } });
+    const ticket = await this.prisma.supportTicket.findUnique({
+      where: { ref },
+    });
     if (!ticket) throw new NotFoundException('Ticket not found');
-    const updated = await this.prisma.supportTicket.update({ where: { ref }, data: { status: TicketStatus.CLOSED } });
-    await this.audit.record({ actorId: adminId, action: 'Closed support ticket', targetType: 'SupportTicket', targetId: ticket.id, ip });
+    const updated = await this.prisma.supportTicket.update({
+      where: { ref },
+      data: { status: TicketStatus.CLOSED },
+    });
+    await this.audit.record({
+      actorId: adminId,
+      action: 'Closed support ticket',
+      targetType: 'SupportTicket',
+      targetId: ticket.id,
+      ip,
+    });
     return this.present(updated);
   }
 
   // ── Internals ─────────────────────────────────────────────────────────
 
-  private async addMessage(ticketId: string, authorId: string, fromAdmin: boolean, body: string, status: TicketStatus) {
+  private async addMessage(
+    ticketId: string,
+    authorId: string,
+    fromAdmin: boolean,
+    body: string,
+    status: TicketStatus,
+  ) {
     const [message] = await this.prisma.$transaction([
-      this.prisma.ticketMessage.create({ data: { ticketId, authorId, fromAdmin, body } }),
-      this.prisma.supportTicket.update({ where: { id: ticketId }, data: { status } }),
+      this.prisma.ticketMessage.create({
+        data: { ticketId, authorId, fromAdmin, body },
+      }),
+      this.prisma.supportTicket.update({
+        where: { id: ticketId },
+        data: { status },
+      }),
     ]);
-    return { id: message.id, fromAdmin, body: message.body, at: message.createdAt };
+    return {
+      id: message.id,
+      fromAdmin,
+      body: message.body,
+      at: message.createdAt,
+    };
   }
 
   private async loadWithMessages(ref: string) {
@@ -104,13 +169,23 @@ export class SupportService {
   }
 
   private present(t: SupportTicket) {
-    return { ref: t.ref, subject: t.subject, priority: t.priority, status: t.status, updatedAt: t.updatedAt };
+    return {
+      ref: t.ref,
+      subject: t.subject,
+      priority: t.priority,
+      status: t.status,
+      updatedAt: t.updatedAt,
+    };
   }
 
   private presentWithThread(t: SupportTicket & { messages: TicketMessage[] }) {
     return {
       ...this.present(t),
-      messages: t.messages.map((m) => ({ fromAdmin: m.fromAdmin, body: m.body, at: m.createdAt })),
+      messages: t.messages.map((m) => ({
+        fromAdmin: m.fromAdmin,
+        body: m.body,
+        at: m.createdAt,
+      })),
     };
   }
 }

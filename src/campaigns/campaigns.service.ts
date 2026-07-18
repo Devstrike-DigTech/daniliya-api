@@ -1,9 +1,24 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
-import { CampaignStatus, PayoutModel, Prisma, SubmissionStatus } from '@prisma/client';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import {
+  CampaignStatus,
+  PayoutModel,
+  Prisma,
+  SubmissionStatus,
+} from '@prisma/client';
 import { randomBytes } from 'crypto';
 import { AuditService } from '../audit/audit.service';
 import { PrismaService } from '../prisma/prisma.service';
-import { AssignInfluencersDto, CreateCampaignDto, ReviewSubmissionDto, SubmitPostDto } from './dto/campaign.dto';
+import {
+  AssignInfluencersDto,
+  CreateCampaignDto,
+  ReviewSubmissionDto,
+  SubmitPostDto,
+} from './dto/campaign.dto';
 
 const DOMAIN = 'https://daniliya.com';
 
@@ -18,10 +33,17 @@ export class CampaignsService {
 
   async create(dto: CreateCampaignDto, adminId: string, ip?: string) {
     if (dto.payoutModel === PayoutModel.FLAT && dto.flatAmount === undefined) {
-      throw new BadRequestException('flatAmount is required for a FLAT (CPA) campaign');
+      throw new BadRequestException(
+        'flatAmount is required for a FLAT (CPA) campaign',
+      );
     }
-    if (dto.payoutModel === PayoutModel.COMMISSION && dto.commissionRate === undefined) {
-      throw new BadRequestException('commissionRate is required for a COMMISSION campaign');
+    if (
+      dto.payoutModel === PayoutModel.COMMISSION &&
+      dto.commissionRate === undefined
+    ) {
+      throw new BadRequestException(
+        'commissionRate is required for a COMMISSION campaign',
+      );
     }
 
     const campaign = await this.prisma.campaign.create({
@@ -30,8 +52,14 @@ export class CampaignsService {
         brief: dto.brief,
         productIds: dto.productIds ?? [],
         payoutModel: dto.payoutModel,
-        commissionRate: dto.commissionRate !== undefined ? new Prisma.Decimal(dto.commissionRate) : null,
-        flatAmount: dto.flatAmount !== undefined ? new Prisma.Decimal(dto.flatAmount) : null,
+        commissionRate:
+          dto.commissionRate !== undefined
+            ? new Prisma.Decimal(dto.commissionRate)
+            : null,
+        flatAmount:
+          dto.flatAmount !== undefined
+            ? new Prisma.Decimal(dto.flatAmount)
+            : null,
         startDate: new Date(dto.startDate),
         endDate: new Date(dto.endDate),
       },
@@ -61,7 +89,11 @@ export class CampaignsService {
       include: {
         assignments: {
           include: {
-            influencer: { include: { user: { select: { firstName: true, lastName: true } } } },
+            influencer: {
+              include: {
+                user: { select: { firstName: true, lastName: true } },
+              },
+            },
             submissions: true,
           },
         },
@@ -75,13 +107,21 @@ export class CampaignsService {
     return this.transition(id, status, adminId, ip);
   }
 
-  private async transition(id: string, to: CampaignStatus, adminId: string, ip?: string) {
+  private async transition(
+    id: string,
+    to: CampaignStatus,
+    adminId: string,
+    ip?: string,
+  ) {
     const campaign = await this.prisma.campaign.findUnique({ where: { id } });
     if (!campaign) throw new NotFoundException('Campaign not found');
     if (campaign.status === CampaignStatus.ENDED) {
       throw new BadRequestException('This campaign has ended');
     }
-    const updated = await this.prisma.campaign.update({ where: { id }, data: { status: to } });
+    const updated = await this.prisma.campaign.update({
+      where: { id },
+      data: { status: to },
+    });
     await this.audit.record({
       actorId: adminId,
       action: `Campaign ${to.toLowerCase()}`,
@@ -95,8 +135,15 @@ export class CampaignsService {
   }
 
   /** Assign influencers — each gets a unique promo code + UTM link. */
-  async assign(campaignId: string, dto: AssignInfluencersDto, adminId: string, ip?: string) {
-    const campaign = await this.prisma.campaign.findUnique({ where: { id: campaignId } });
+  async assign(
+    campaignId: string,
+    dto: AssignInfluencersDto,
+    adminId: string,
+    ip?: string,
+  ) {
+    const campaign = await this.prisma.campaign.findUnique({
+      where: { id: campaignId },
+    });
     if (!campaign) throw new NotFoundException('Campaign not found');
 
     const results: {
@@ -106,14 +153,26 @@ export class CampaignsService {
       already?: boolean;
     }[] = [];
     for (const userId of dto.influencerUserIds) {
-      const influencer = await this.prisma.influencerProfile.findUnique({ where: { userId } });
+      const influencer = await this.prisma.influencerProfile.findUnique({
+        where: { userId },
+      });
       if (!influencer || !influencer.isApproved) continue;
 
-      const existing = await this.prisma.campaignInfluencerAssignment.findUnique({
-        where: { campaignId_influencerId: { campaignId, influencerId: influencer.id } },
-      });
+      const existing =
+        await this.prisma.campaignInfluencerAssignment.findUnique({
+          where: {
+            campaignId_influencerId: {
+              campaignId,
+              influencerId: influencer.id,
+            },
+          },
+        });
       if (existing) {
-        results.push({ influencerId: influencer.id, promoCode: existing.promoCode, already: true });
+        results.push({
+          influencerId: influencer.id,
+          promoCode: existing.promoCode,
+          already: true,
+        });
         continue;
       }
 
@@ -148,7 +207,9 @@ export class CampaignsService {
       where: { assignment: { campaignId } },
       include: {
         assignment: {
-          include: { influencer: { include: { user: { select: { firstName: true } } } } },
+          include: {
+            influencer: { include: { user: { select: { firstName: true } } } },
+          },
         },
       },
       orderBy: { submittedAt: 'desc' },
@@ -162,12 +223,18 @@ export class CampaignsService {
     adminId: string,
     ip?: string,
   ) {
-    const submission = await this.prisma.campaignSubmission.findUnique({ where: { id: submissionId } });
+    const submission = await this.prisma.campaignSubmission.findUnique({
+      where: { id: submissionId },
+    });
     if (!submission) throw new NotFoundException('Submission not found');
 
     const updated = await this.prisma.campaignSubmission.update({
       where: { id: submissionId },
-      data: { status: decision, reviewerNote: dto.note, reviewedAt: new Date() },
+      data: {
+        status: decision,
+        reviewerNote: dto.note,
+        reviewedAt: new Date(),
+      },
     });
     await this.audit.record({
       actorId: adminId,
@@ -185,11 +252,13 @@ export class CampaignsService {
 
   async myCampaigns(userId: string) {
     const influencer = await this.influencerOrThrow(userId);
-    const assignments = await this.prisma.campaignInfluencerAssignment.findMany({
-      where: { influencerId: influencer.id },
-      include: { campaign: true, submissions: true },
-      orderBy: { assignedAt: 'desc' },
-    });
+    const assignments = await this.prisma.campaignInfluencerAssignment.findMany(
+      {
+        where: { influencerId: influencer.id },
+        include: { campaign: true, submissions: true },
+        orderBy: { assignedAt: 'desc' },
+      },
+    );
     return assignments.map((a) => ({
       campaignId: a.campaignId,
       title: a.campaign.title,
@@ -203,7 +272,10 @@ export class CampaignsService {
       accepted: a.accepted,
       clicks: a.clicks,
       conversions: a.conversions,
-      submissions: a.submissions.map((s) => ({ postUrl: s.postUrl, status: s.status })),
+      submissions: a.submissions.map((s) => ({
+        postUrl: s.postUrl,
+        status: s.status,
+      })),
     }));
   }
 
@@ -219,7 +291,9 @@ export class CampaignsService {
   async submitPost(userId: string, campaignId: string, dto: SubmitPostDto) {
     const assignment = await this.myAssignment(userId, campaignId, true);
     if (!assignment.accepted) {
-      throw new BadRequestException('Accept the campaign brief before submitting a post');
+      throw new BadRequestException(
+        'Accept the campaign brief before submitting a post',
+      );
     }
     const submission = await this.prisma.campaignSubmission.create({
       data: {
@@ -247,14 +321,20 @@ export class CampaignsService {
         disbursed: sum(['DISBURSED']),
         conversions: rows.filter((r) => r.status !== 'VOIDED').length,
       },
-      records: rows.map((r) => ({ amount: r.amount, status: r.status, at: r.createdAt })),
+      records: rows.map((r) => ({
+        amount: r.amount,
+        status: r.status,
+        at: r.createdAt,
+      })),
     };
   }
 
   // ── Internals ─────────────────────────────────────────────────────────
 
   private async influencerOrThrow(userId: string) {
-    const influencer = await this.prisma.influencerProfile.findUnique({ where: { userId } });
+    const influencer = await this.prisma.influencerProfile.findUnique({
+      where: { userId },
+    });
     if (!influencer) throw new ForbiddenException('Not an influencer');
     return influencer;
   }
@@ -267,13 +347,21 @@ export class CampaignsService {
    * caller so accept() and submitPost() cannot drift apart, and because a portal
    * -side check is trivially bypassed by calling the API directly.
    */
-  private async myAssignment(userId: string, campaignId: string, requireLive = false) {
+  private async myAssignment(
+    userId: string,
+    campaignId: string,
+    requireLive = false,
+  ) {
     const influencer = await this.influencerOrThrow(userId);
-    const assignment = await this.prisma.campaignInfluencerAssignment.findUnique({
-      where: { campaignId_influencerId: { campaignId, influencerId: influencer.id } },
-      include: { campaign: { select: { status: true } } },
-    });
-    if (!assignment) throw new NotFoundException('You are not assigned to this campaign');
+    const assignment =
+      await this.prisma.campaignInfluencerAssignment.findUnique({
+        where: {
+          campaignId_influencerId: { campaignId, influencerId: influencer.id },
+        },
+        include: { campaign: { select: { status: true } } },
+      });
+    if (!assignment)
+      throw new NotFoundException('You are not assigned to this campaign');
 
     if (requireLive && assignment.campaign.status !== CampaignStatus.ACTIVE) {
       throw new BadRequestException(

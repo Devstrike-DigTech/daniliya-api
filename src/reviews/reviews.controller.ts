@@ -1,11 +1,25 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Param, Post, Query, Req } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Param,
+  Post,
+  Query,
+  Req,
+} from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { ReviewStatus } from '@prisma/client';
 import type { Request } from 'express';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Role, Roles } from '../common/decorators/roles.decorator';
 import { Public } from '../common/decorators/public.decorator';
-import { CreateReviewDto, FlagReviewDto, RespondReviewDto } from './dto/review.dto';
+import {
+  CreateReviewDto,
+  FlagReviewDto,
+  RespondReviewDto,
+} from './dto/review.dto';
 import { ReviewsService } from './reviews.service';
 
 const ipOf = (req: Request) => req.ip ?? undefined;
@@ -71,7 +85,11 @@ export class ReviewsController {
   @Post('admin/reviews/:id/keep')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Keep (re-publish) a review' })
-  keep(@CurrentUser('id') adminId: string, @Param('id') id: string, @Req() req: Request) {
+  keep(
+    @CurrentUser('id') adminId: string,
+    @Param('id') id: string,
+    @Req() req: Request,
+  ) {
     return this.reviews.keep(adminId, id, ipOf(req));
   }
 
@@ -80,7 +98,11 @@ export class ReviewsController {
   @Post('admin/reviews/:id/remove')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Remove a review' })
-  remove(@CurrentUser('id') adminId: string, @Param('id') id: string, @Req() req: Request) {
+  remove(
+    @CurrentUser('id') adminId: string,
+    @Param('id') id: string,
+    @Req() req: Request,
+  ) {
     return this.reviews.remove(adminId, id, ipOf(req));
   }
 }

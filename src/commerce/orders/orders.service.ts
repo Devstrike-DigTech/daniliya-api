@@ -38,7 +38,13 @@ type ResolvedItem = {
   quantity: number;
   giftWrap: boolean;
   giftMeta?: Prisma.JsonValue | null;
-  product: { id: string; title: string; price: Prisma.Decimal; status: ProductStatus; stockQuantity: number };
+  product: {
+    id: string;
+    title: string;
+    price: Prisma.Decimal;
+    status: ProductStatus;
+    stockQuantity: number;
+  };
 };
 
 @Injectable()
@@ -56,7 +62,11 @@ export class OrdersService {
     if (items.length === 0) throw new BadRequestException('Your cart is empty');
 
     const breakdown = this.pricing.quote(
-      items.map((i) => ({ unitPrice: i.product.price, quantity: i.quantity, giftWrap: i.giftWrap })),
+      items.map((i) => ({
+        unitPrice: i.product.price,
+        quantity: i.quantity,
+        giftWrap: i.giftWrap,
+      })),
       dto.mode,
     );
     return { mode: dto.mode, ...breakdown };
@@ -66,7 +76,11 @@ export class OrdersService {
   async guestQuote(dto: GuestQuoteDto) {
     const items = await this.loadGuestItems(dto.items);
     const breakdown = this.pricing.quote(
-      items.map((i) => ({ unitPrice: i.product.price, quantity: i.quantity, giftWrap: i.giftWrap })),
+      items.map((i) => ({
+        unitPrice: i.product.price,
+        quantity: i.quantity,
+        giftWrap: i.giftWrap,
+      })),
       dto.mode,
     );
     return { mode: dto.mode, ...breakdown };
@@ -96,20 +110,30 @@ export class OrdersService {
     opts: { clearCartFor?: string },
   ) {
     if (dto.mode === FulfilmentMode.DELIVERY && !dto.deliveryAddress) {
-      throw new BadRequestException('A delivery address is required for delivery orders');
+      throw new BadRequestException(
+        'A delivery address is required for delivery orders',
+      );
     }
 
     for (const it of items) {
       if (it.product.status !== ProductStatus.ACTIVE) {
-        throw new BadRequestException(`"${it.product.title}" is no longer available`);
+        throw new BadRequestException(
+          `"${it.product.title}" is no longer available`,
+        );
       }
       if (it.product.stockQuantity < it.quantity) {
-        throw new BadRequestException(`Not enough stock for "${it.product.title}"`);
+        throw new BadRequestException(
+          `Not enough stock for "${it.product.title}"`,
+        );
       }
     }
 
     const breakdown = this.pricing.quote(
-      items.map((i) => ({ unitPrice: i.product.price, quantity: i.quantity, giftWrap: i.giftWrap })),
+      items.map((i) => ({
+        unitPrice: i.product.price,
+        quantity: i.quantity,
+        giftWrap: i.giftWrap,
+      })),
       dto.mode,
     );
 
@@ -133,7 +157,8 @@ export class OrdersService {
           affiliateCode: dto.affiliateCode,
           influencerCode: dto.influencerCode,
           promoCode: dto.promoCode,
-          deliveryAddress: (dto.deliveryAddress ?? null) as Prisma.InputJsonValue,
+          deliveryAddress: (dto.deliveryAddress ??
+            null) as Prisma.InputJsonValue,
           contact: dto.contact as unknown as Prisma.InputJsonValue,
           confirmedAt: isPod ? new Date() : null,
           items: {
@@ -143,7 +168,7 @@ export class OrdersService {
               quantity: i.quantity,
               unitPrice: i.product.price,
               giftWrap: i.giftWrap,
-              giftMeta: (i.giftMeta ?? undefined) as Prisma.InputJsonValue | undefined,
+              giftMeta: i.giftMeta ?? undefined,
               totalPrice: i.product.price.times(i.quantity),
             })),
           },
@@ -171,7 +196,9 @@ export class OrdersService {
       // the cart until the webhook confirms payment. Guests have no server-side
       // cart, so there is nothing to clear for them.
       if (isPod && opts.clearCartFor) {
-        await tx.cartItem.deleteMany({ where: { cart: { userId: opts.clearCartFor } } });
+        await tx.cartItem.deleteMany({
+          where: { cart: { userId: opts.clearCartFor } },
+        });
       }
 
       return created;
@@ -182,7 +209,10 @@ export class OrdersService {
       await this.commissions.accrueForOrder(order.id);
       return {
         order: this.orderSummary(order),
-        payment: { method: order.payment!.method, status: order.payment!.status },
+        payment: {
+          method: order.payment!.method,
+          status: order.payment!.status,
+        },
         message: 'Order placed — pay on delivery.',
       };
     }
@@ -215,7 +245,8 @@ export class OrdersService {
       where: { ref },
       include: { items: true, payment: true, shipment: true },
     });
-    if (!order || order.customerId !== userId) throw new NotFoundException('Order not found');
+    if (!order || order.customerId !== userId)
+      throw new NotFoundException('Order not found');
     return this.orderDetail(order);
   }
 
@@ -232,7 +263,10 @@ export class OrdersService {
   async track(ref: string) {
     const order = await this.prisma.order.findUnique({
       where: { ref },
-      include: { shipment: true, items: { select: { titleSnapshot: true, quantity: true } } },
+      include: {
+        shipment: true,
+        items: { select: { titleSnapshot: true, quantity: true } },
+      },
     });
     if (!order) throw new NotFoundException('No order with that reference');
 
@@ -255,7 +289,9 @@ export class OrdersService {
   private async loadCartItems(userId: string): Promise<ResolvedItem[]> {
     const cart = await this.prisma.cart.findUnique({
       where: { userId },
-      include: { items: { include: { product: true }, orderBy: { id: 'asc' } } },
+      include: {
+        items: { include: { product: true }, orderBy: { id: 'asc' } },
+      },
     });
     return cart?.items ?? [];
   }
@@ -267,12 +303,17 @@ export class OrdersService {
    */
   private async loadGuestItems(lines: GuestItemDto[]): Promise<ResolvedItem[]> {
     const ids = [...new Set(lines.map((l) => l.productId))];
-    const products = await this.prisma.product.findMany({ where: { id: { in: ids } } });
+    const products = await this.prisma.product.findMany({
+      where: { id: { in: ids } },
+    });
     const byId = new Map(products.map((p) => [p.id, p]));
 
     return lines.map((line) => {
       const product = byId.get(line.productId);
-      if (!product) throw new BadRequestException('One of the items is no longer available');
+      if (!product)
+        throw new BadRequestException(
+          'One of the items is no longer available',
+        );
       return {
         productId: product.id,
         quantity: line.quantity,
@@ -333,13 +374,17 @@ export class OrdersService {
       channel: o.channel,
       total: o.total,
       createdAt: o.createdAt,
-      payment: o.payment ? { status: o.payment.status, method: o.payment.method } : null,
+      payment: o.payment
+        ? { status: o.payment.status, method: o.payment.method }
+        : null,
     };
   }
 
-  private orderDetail(o: Prisma.OrderGetPayload<{
-    include: { items: true; payment: true; shipment: true };
-  }>) {
+  private orderDetail(
+    o: Prisma.OrderGetPayload<{
+      include: { items: true; payment: true; shipment: true };
+    }>,
+  ) {
     return {
       ref: o.ref,
       status: o.status,
@@ -362,7 +407,11 @@ export class OrdersService {
         totalPrice: i.totalPrice,
       })),
       payment: o.payment
-        ? { method: o.payment.method, status: o.payment.status, reference: o.payment.providerRef }
+        ? {
+            method: o.payment.method,
+            status: o.payment.status,
+            reference: o.payment.providerRef,
+          }
         : null,
       shipment: o.shipment,
     };

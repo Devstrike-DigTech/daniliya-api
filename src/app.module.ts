@@ -26,6 +26,7 @@ import { ReviewsModule } from './reviews/reviews.module';
 import { CampaignsModule } from './campaigns/campaigns.module';
 import { SupportModule } from './support/support.module';
 import { AffiliateModule } from './affiliate/affiliate.module';
+import { VendorModule } from './vendor/vendor.module';
 import { InfluencerModule } from './influencer/influencer.module';
 import { PayoutsModule } from './payouts/payouts.module';
 import { AdminModule } from './admin/admin.module';
@@ -57,6 +58,7 @@ import { TrackingModule } from './tracking/tracking.module';
     CampaignsModule,
     SupportModule,
     AffiliateModule,
+    VendorModule,
     InfluencerModule,
     PayoutsModule,
     AdminModule,

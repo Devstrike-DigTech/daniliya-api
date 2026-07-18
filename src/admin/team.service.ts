@@ -1,4 +1,9 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { AdminRole, UserRole, UserStatus } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import { randomBytes } from 'crypto';
@@ -18,7 +23,16 @@ export class AdminTeamService {
 
   async list() {
     const rows = await this.prisma.adminProfile.findMany({
-      include: { user: { select: { firstName: true, lastName: true, email: true, status: true } } },
+      include: {
+        user: {
+          select: {
+            firstName: true,
+            lastName: true,
+            email: true,
+            status: true,
+          },
+        },
+      },
       orderBy: { createdAt: 'desc' },
     });
     return rows.map((a) => ({
@@ -69,11 +83,21 @@ export class AdminTeamService {
     return { id: user.id, email, role: dto.role, invited: true };
   }
 
-  async changeRole(actingAdminId: string, adminProfileId: string, dto: ChangeRoleDto, ip?: string) {
+  async changeRole(
+    actingAdminId: string,
+    adminProfileId: string,
+    dto: ChangeRoleDto,
+    ip?: string,
+  ) {
     await this.assertSuperadmin(actingAdminId);
-    const profile = await this.prisma.adminProfile.findUnique({ where: { id: adminProfileId } });
+    const profile = await this.prisma.adminProfile.findUnique({
+      where: { id: adminProfileId },
+    });
     if (!profile) throw new NotFoundException('Team member not found');
-    const updated = await this.prisma.adminProfile.update({ where: { id: adminProfileId }, data: { role: dto.role } });
+    const updated = await this.prisma.adminProfile.update({
+      where: { id: adminProfileId },
+      data: { role: dto.role },
+    });
     await this.audit.record({
       actorId: actingAdminId,
       action: 'Changed teammate role',
@@ -88,13 +112,19 @@ export class AdminTeamService {
 
   async remove(actingAdminId: string, adminProfileId: string, ip?: string) {
     await this.assertSuperadmin(actingAdminId);
-    const profile = await this.prisma.adminProfile.findUnique({ where: { id: adminProfileId } });
+    const profile = await this.prisma.adminProfile.findUnique({
+      where: { id: adminProfileId },
+    });
     if (!profile) throw new NotFoundException('Team member not found');
-    if (profile.userId === actingAdminId) throw new BadRequestException('You cannot remove yourself');
+    if (profile.userId === actingAdminId)
+      throw new BadRequestException('You cannot remove yourself');
 
     await this.prisma.$transaction([
       this.prisma.adminProfile.delete({ where: { id: adminProfileId } }),
-      this.prisma.user.update({ where: { id: profile.userId }, data: { role: UserRole.CUSTOMER } }),
+      this.prisma.user.update({
+        where: { id: profile.userId },
+        data: { role: UserRole.CUSTOMER },
+      }),
     ]);
     await this.audit.record({
       actorId: actingAdminId,
@@ -107,7 +137,9 @@ export class AdminTeamService {
   }
 
   private async assertSuperadmin(userId: string) {
-    const profile = await this.prisma.adminProfile.findUnique({ where: { userId } });
+    const profile = await this.prisma.adminProfile.findUnique({
+      where: { userId },
+    });
     if (profile?.role !== AdminRole.SUPERADMIN) {
       throw new ForbiddenException('Only a superadmin can manage the team');
     }

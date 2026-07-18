@@ -32,7 +32,9 @@ export class PaymentsService {
     const externalEventId = `paystack:${event.event}:${reference ?? event.data?.id}`;
 
     // Dedupe replays.
-    const seen = await this.prisma.webhookEvent.findUnique({ where: { externalEventId } });
+    const seen = await this.prisma.webhookEvent.findUnique({
+      where: { externalEventId },
+    });
     if (seen) {
       return { received: true, duplicate: true };
     }
@@ -48,7 +50,7 @@ export class PaymentsService {
         provider: 'paystack',
         externalEventId,
         eventType: event.event,
-        payload: event as object,
+        payload: event,
       },
     });
 
@@ -76,7 +78,9 @@ export class PaymentsService {
         data: { status: OrderStatus.CONFIRMED, confirmedAt: new Date() },
       });
       // Clear the buyer's cart now the order is paid.
-      const cart = await tx.cart.findUnique({ where: { userId: payment.order.customerId } });
+      const cart = await tx.cart.findUnique({
+        where: { userId: payment.order.customerId },
+      });
       if (cart) await tx.cartItem.deleteMany({ where: { cartId: cart.id } });
     });
 
@@ -86,7 +90,9 @@ export class PaymentsService {
   }
 
   private async markFailed(reference: string) {
-    const payment = await this.prisma.payment.findUnique({ where: { providerRef: reference } });
+    const payment = await this.prisma.payment.findUnique({
+      where: { providerRef: reference },
+    });
     if (!payment || payment.status === PaymentStatus.PAID) return;
     await this.prisma.payment.update({
       where: { id: payment.id },

@@ -12,12 +12,17 @@ import {
   ValidateNested,
 } from 'class-validator';
 
-export const SELECTABLE_ROLES = ['CUSTOMER', 'AFFILIATE', 'INFLUENCER', 'VENDOR'] as const;
+export const SELECTABLE_ROLES = [
+  'CUSTOMER',
+  'AFFILIATE',
+  'INFLUENCER',
+  'VENDOR',
+] as const;
 export type SelectableRole = (typeof SELECTABLE_ROLES)[number];
 
 export class SelectRoleDto {
   @ApiProperty({ enum: SELECTABLE_ROLES, example: 'AFFILIATE' })
-  @IsIn(SELECTABLE_ROLES as unknown as string[])
+  @IsIn(SELECTABLE_ROLES)
   role!: SelectableRole;
 }
 

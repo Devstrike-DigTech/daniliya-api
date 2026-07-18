@@ -1,4 +1,9 @@
-import { Injectable, OnModuleDestroy, OnModuleInit, Logger } from '@nestjs/common';
+import {
+  Injectable,
+  OnModuleDestroy,
+  OnModuleInit,
+  Logger,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import Redis from 'ioredis';
 
@@ -8,10 +13,13 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
   private readonly client: Redis;
 
   constructor(private configService: ConfigService) {
-    this.client = new Redis(this.configService.getOrThrow<string>('REDIS_URL'), {
-      maxRetriesPerRequest: 3,
-      lazyConnect: true,
-    });
+    this.client = new Redis(
+      this.configService.getOrThrow<string>('REDIS_URL'),
+      {
+        maxRetriesPerRequest: 3,
+        lazyConnect: true,
+      },
+    );
 
     this.client.on('error', (err) => this.logger.error('Redis error', err));
   }
@@ -50,7 +58,8 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
   }
 
   async set(key: string, value: unknown, ttlSeconds?: number): Promise<void> {
-    const serialized = typeof value === 'string' ? value : JSON.stringify(value);
+    const serialized =
+      typeof value === 'string' ? value : JSON.stringify(value);
     if (ttlSeconds) {
       await this.client.set(key, serialized, 'EX', ttlSeconds);
     } else {

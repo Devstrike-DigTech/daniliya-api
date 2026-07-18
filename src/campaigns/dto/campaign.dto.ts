@@ -32,18 +32,26 @@ export class CreateCampaignDto {
   @IsString({ each: true })
   productIds?: string[];
 
-  @ApiProperty({ enum: PayoutModel, description: 'FLAT = fixed CPA per conversion; COMMISSION = % of subtotal' })
+  @ApiProperty({
+    enum: PayoutModel,
+    description: 'FLAT = fixed CPA per conversion; COMMISSION = % of subtotal',
+  })
   @IsEnum(PayoutModel)
   payoutModel!: PayoutModel;
 
-  @ApiPropertyOptional({ description: 'Required when payoutModel = COMMISSION' })
+  @ApiPropertyOptional({
+    description: 'Required when payoutModel = COMMISSION',
+  })
   @IsOptional()
   @Type(() => Number)
   @IsNumber()
   @Min(0)
   commissionRate?: number;
 
-  @ApiPropertyOptional({ description: 'CPA per conversion in naira; required when payoutModel = FLAT' })
+  @ApiPropertyOptional({
+    description:
+      'CPA per conversion in naira; required when payoutModel = FLAT',
+  })
   @IsOptional()
   @Type(() => Number)
   @IsNumber()
@@ -60,7 +68,10 @@ export class CreateCampaignDto {
 }
 
 export class AssignInfluencersDto {
-  @ApiProperty({ type: [String], description: 'User IDs of influencers to assign' })
+  @ApiProperty({
+    type: [String],
+    description: 'User IDs of influencers to assign',
+  })
   @IsArray()
   @ArrayMinSize(1)
   @IsUUID('4', { each: true })
@@ -72,7 +83,9 @@ export class SubmitPostDto {
   @IsUrl()
   postUrl!: string;
 
-  @ApiPropertyOptional({ description: 'Confirms the post carries the #ad disclosure' })
+  @ApiPropertyOptional({
+    description: 'Confirms the post carries the #ad disclosure',
+  })
   @IsOptional()
   hasAdDisclosure?: boolean;
 }

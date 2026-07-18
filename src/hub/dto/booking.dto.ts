@@ -59,7 +59,10 @@ export class CreateBookingDto {
   @IsDateString()
   preferredDate?: string;
 
-  @ApiPropertyOptional({ type: [String], description: 'Uploaded attachment URLs' })
+  @ApiPropertyOptional({
+    type: [String],
+    description: 'Uploaded attachment URLs',
+  })
   @IsOptional()
   @IsArray()
   @IsUrl({}, { each: true })

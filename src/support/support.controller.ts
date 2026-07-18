@@ -1,4 +1,14 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Param, Post, Query, Req } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Param,
+  Post,
+  Query,
+  Req,
+} from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { TicketStatus } from '@prisma/client';
 import type { Request } from 'express';
@@ -35,7 +45,11 @@ export class SupportController {
 
   @Post('tickets/:ref/reply')
   @HttpCode(HttpStatus.OK)
-  reply(@CurrentUser('id') userId: string, @Param('ref') ref: string, @Body() dto: TicketReplyDto) {
+  reply(
+    @CurrentUser('id') userId: string,
+    @Param('ref') ref: string,
+    @Body() dto: TicketReplyDto,
+  ) {
     return this.support.userReply(userId, ref, dto);
   }
 }
@@ -59,19 +73,31 @@ export class AdminSupportController {
 
   @Post(':ref/reply')
   @HttpCode(HttpStatus.OK)
-  reply(@CurrentUser('id') adminId: string, @Param('ref') ref: string, @Body() dto: TicketReplyDto) {
+  reply(
+    @CurrentUser('id') adminId: string,
+    @Param('ref') ref: string,
+    @Body() dto: TicketReplyDto,
+  ) {
     return this.support.adminReply(adminId, ref, dto);
   }
 
   @Post(':ref/assign')
   @HttpCode(HttpStatus.OK)
-  assign(@CurrentUser('id') adminId: string, @Param('ref') ref: string, @Req() r: Request) {
+  assign(
+    @CurrentUser('id') adminId: string,
+    @Param('ref') ref: string,
+    @Req() r: Request,
+  ) {
     return this.support.assign(adminId, ref, ipOf(r));
   }
 
   @Post(':ref/close')
   @HttpCode(HttpStatus.OK)
-  close(@CurrentUser('id') adminId: string, @Param('ref') ref: string, @Req() r: Request) {
+  close(
+    @CurrentUser('id') adminId: string,
+    @Param('ref') ref: string,
+    @Req() r: Request,
+  ) {
     return this.support.close(adminId, ref, ipOf(r));
   }
 }

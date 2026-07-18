@@ -1,4 +1,14 @@
-import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, Patch, Post } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Param,
+  Patch,
+  Post,
+} from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Role, Roles } from '../../common/decorators/roles.decorator';
@@ -26,7 +36,11 @@ export class VendorProductsController {
 
   @Patch(':id')
   @ApiOperation({ summary: 'Edit a product' })
-  update(@CurrentUser('id') userId: string, @Param('id') id: string, @Body() dto: UpdateProductDto) {
+  update(
+    @CurrentUser('id') userId: string,
+    @Param('id') id: string,
+    @Body() dto: UpdateProductDto,
+  ) {
     return this.products.update(userId, id, dto);
   }
 

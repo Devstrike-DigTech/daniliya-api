@@ -1,4 +1,14 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Param, Post, Query, Req } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Param,
+  Post,
+  Query,
+  Req,
+} from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { OrderStatus } from '@prisma/client';
 import type { Request } from 'express';
@@ -29,15 +39,27 @@ export class AdminOrdersController {
 
   @Post(':ref/refund')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Refund an order — voids commissions, restores stock' })
-  refund(@Param('ref') ref: string, @CurrentUser('id') adminId: string, @Req() req: Request) {
+  @ApiOperation({
+    summary: 'Refund an order — voids commissions, restores stock',
+  })
+  refund(
+    @Param('ref') ref: string,
+    @CurrentUser('id') adminId: string,
+    @Req() req: Request,
+  ) {
     return this.orders.refund(ref, adminId, ipOf(req));
   }
 
   @Post(':ref/cancel')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Cancel an order — voids commissions, restores stock' })
-  cancel(@Param('ref') ref: string, @CurrentUser('id') adminId: string, @Req() req: Request) {
+  @ApiOperation({
+    summary: 'Cancel an order — voids commissions, restores stock',
+  })
+  cancel(
+    @Param('ref') ref: string,
+    @CurrentUser('id') adminId: string,
+    @Req() req: Request,
+  ) {
     return this.orders.cancel(ref, adminId, ipOf(req));
   }
 }
