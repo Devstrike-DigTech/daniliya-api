@@ -126,6 +126,18 @@ export class CommissionsService {
     if (amount.lte(0)) return;
 
     await this.upsertCommission(order.id, influencerUserId, BeneficiaryType.INFLUENCER, amount);
+
+    // Count the sale against the creator's assignment. Without this,
+    // CampaignAssignment.conversions stays 0 forever even though it is what the
+    // creator's campaign card and the admin campaign detail both display — a
+    // creator would see "0 conversions" on a campaign they had just earned on.
+    if (campaignId) {
+      await this.prisma.campaignInfluencerAssignment.updateMany({
+        where: { campaignId, influencer: { userId: influencerUserId } },
+        data: { conversions: { increment: 1 } },
+      });
+    }
+
     this.logger.log(`Influencer commission accrued for order ${order.id}`);
   }
 
