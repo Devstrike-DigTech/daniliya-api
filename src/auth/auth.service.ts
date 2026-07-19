@@ -58,11 +58,16 @@ export class AuthService {
     // person signing up nothing at all.
     if (dto.phone) {
       const phoneTaken = await this.prisma.user.findFirst({
-        where: { phone: dto.phone, ...(existing ? { id: { not: existing.id } } : {}) },
+        where: {
+          phone: dto.phone,
+          ...(existing ? { id: { not: existing.id } } : {}),
+        },
         select: { id: true },
       });
       if (phoneTaken) {
-        throw new ConflictException('An account with this phone number already exists');
+        throw new ConflictException(
+          'An account with this phone number already exists',
+        );
       }
     }
 

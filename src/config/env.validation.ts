@@ -92,6 +92,16 @@ export class EnvVars {
   @IsOptional() @IsString() CLOUDINARY_CLOUD_NAME?: string;
   @IsOptional() @IsString() CLOUDINARY_API_KEY?: string;
   @IsOptional() @IsString() CLOUDINARY_API_SECRET?: string;
+  // ── File storage ──────────────────────────────────────────────────────
+  /** Which provider POST /uploads writes to: "cloudinary" or "r2". */
+  @IsOptional() @IsString() UPLOAD_DRIVER?: string;
+  @IsOptional() @IsString() R2_ACCOUNT_ID?: string;
+  @IsOptional() @IsString() R2_ACCESS_KEY_ID?: string;
+  @IsOptional() @IsString() R2_SECRET_ACCESS_KEY?: string;
+  @IsOptional() @IsString() R2_BUCKET?: string;
+  /** Public base URL for the bucket — R2 has none by default. */
+  @IsOptional() @IsString() R2_PUBLIC_BASE_URL?: string;
+
   @IsOptional() @IsString() AWS_ACCESS_KEY_ID?: string;
   @IsOptional() @IsString() AWS_SECRET_ACCESS_KEY?: string;
   @IsOptional() @IsString() AWS_REGION?: string;
