@@ -12,65 +12,63 @@ something was not checked, it says so.
 | Layer | State |
 |---|---|
 | API | Substantially complete — 145 endpoints across auth, catalogue, checkout, bookings, affiliate, campaigns, vendor, reviews, payouts, ledger, support, admin, webhooks |
-| Storefront | Buying and booking are live end to end. No customer account area |
+| Storefront | Buying, booking and customer accounts are live end to end |
 | Affiliate portal | Complete — join flow and dashboard on real data |
 | Influencer portal | Complete — application flow and dashboard on real data |
 | Vendor portal | Complete — including fulfilment, which creates the buyer's tracking |
-| Admin portal | **Reads are complete. Almost all writes are not wired** |
+| Admin portal | Reads complete; writes wired except 6 controls with no endpoint |
 
-The single biggest gap is the admin portal: it can see everything and do very
-little. That is not an API problem — the endpoints exist and work.
-
----
-
-## 2. Blocking: admin cannot act
-
-**40 buttons across the admin portal have no handler at all.** They are plain
-`<button>` elements that look operable and do nothing. Only two Server Action
-files exist in the whole portal (`campaigns/actions.ts`, `settings/actions.ts`),
-so campaign pause/resume/end and team/config are the only working writes.
-
-| Page | Inert controls | Endpoints that exist and are unused |
-|---|---|---|
-| Vendors detail | Message, Suspend user, Reinstate, Export CSV | `POST /admin/vendors/:id/approve` · `/reject` · `/admin/users/:id/suspend` · `/reinstate` · `/message` |
-| Influencers detail | Message, Suspend, Reinstate, Offer retainer, Export CSV | `POST /admin/influencers/:id/approve` · `/reject` |
-| Affiliates detail | Change tier, Message, Suspend, Reinstate | `POST /admin/affiliates/:id/tier` |
-| Products list + detail | Approve, Reject, Unlist temporarily, Remove | `POST /admin/products/:id/approve` · `/reject` |
-| Orders detail | Confirm Order, Issue refund, Cancel Order | `POST /admin/orders/:ref/refund` · `/cancel` |
-| Payouts detail | Approve & schedule, Hold, Reject, Retry, Download receipt | `POST /admin/payouts/run` · `:ref/approve` · `/hold` · `/retry` · `/cancel` |
-| Bookings detail | Accept, Reject, Mark completed, Cancel | `POST /admin/bookings/:ref/accept` · `/start` · `/complete` · `/reject` · `/cancel` |
-| Reviews | Keep, Remove | `POST /admin/reviews/:id/keep` · `/remove` · `/flag` |
-| Support | Mark as resolved | `POST /admin/support/tickets/:ref/reply` · `/assign` · `/close` |
-| Campaign detail | (submissions are view-only) | `POST /admin/campaigns/submissions/:sid/approve` · `/reject` |
-| Several lists | Filter, Export CSV / ledger | — no endpoint; see §5 |
-
-### 2.1 The chain that blocks creator payouts
-
-`CommissionsService.confirmEligible()` promotes a creator's commission from
-PENDING to CONFIRMED **only if the campaign post was approved**:
-
-> *"influencer commissions additionally require an APPROVED post submission with #ad"*
-
-Nothing in the admin portal can approve a submission — the campaign detail page
-links to the post URL and stops. So a creator's earnings stay PENDING for ever,
-and the money never reaches their wallet or a payout batch.
-
-Combined with `POST /admin/payouts/run` being unwired, **there is currently no
-UI path by which anyone gets paid.** Both work fine over the API.
+**Update (2026-07-19):** the admin write actions, the service-quote flow and
+customer accounts have since been wired — see §2 and §3, which now record what
+was done. The remaining gaps are support ticketing and product reviews (both
+API-complete, no customer-facing UI), and the configuration blockers in §6.
 
 ---
+
+## 2. Admin write actions — now wired
+
+Was: 40 buttons across the admin portal with no handler at all. Now: **6**, and
+every one of those six has no endpoint behind it (§5).
+
+Wired, each through a Server Action and a shared `ActionButton` that renders the
+API's own error rather than swallowing it, with confirmation on destructive work:
+
+| Area | Actions |
+|---|---|
+| Payouts | run, approve & schedule, hold, retry, cancel |
+| Campaign submissions | approve, reject with a note |
+| People | vendor/influencer approve + reject, suspend, reinstate, message, affiliate tier |
+| Commerce | product approve/reject, order refund/cancel, the booking lifecycle |
+| Moderation | review flag/keep/remove, ticket reply/assign/close |
+
+### 2.1 The chain that blocked creator payouts is open
+
+`confirmEligible()` only promotes an influencer commission once the campaign
+post is APPROVED, and nothing could approve one. With submission review and the
+payout run wired, a real run produced `PB-471DC5C6` — the first INFLUENCER batch
+in the system — for ₦10,500, with ledger reconciliation at zero drift.
+
+**Money still cannot leave the platform**, but the blocker has moved from
+missing UI to compliance: approving a batch correctly returns
+*"Compliance checks must all pass before approval"* because no recipient can
+pass KYC, and KYC is impossible until the Paystack key gains name-enquiry
+permission (§6). That is now the single thing standing between the platform and
+paying people.
 
 ## 3. Whole features with no interface anywhere
 
 | Feature | API | UI |
 |---|---|---|
-| **Support ticketing** | `POST/GET /support/tickets`, replies, plus the admin side | **None in any portal.** Customers cannot raise a ticket; the admin Support page lists but cannot reply, assign or close |
+| **Support ticketing** | `POST/GET /support/tickets`, replies, plus the admin side | **Admin side done** — reply, assign and close are wired and exercised. **Customers still cannot raise a ticket from anywhere**, so the queue only fills via the API |
 | **Product reviews** | `GET /products/:id/reviews`, `POST /reviews`, vendor respond, admin moderate | **Storefront shows no reviews and cannot submit one.** The vendor portal can respond; nothing produces a review to respond to |
-| **Customer accounts** | `/auth/*`, `GET /orders`, `GET /bookings` | **No sign-in, order history or booking history on the storefront.** Guests can buy and claim their history later by registering — but there is no page to register or sign in on |
+| **Customer accounts** | `/auth/*`, `GET /orders`, `GET /bookings` | **Done.** `/account` offers sign in and registration, and lists orders and service requests. Registering with an email that checked out as a guest claims that history, and the verify screen says so |
 
-Reviews is the notable one: the vendor portal has a reviews screen, admin has
-moderation endpoints, and the data model supports it — but no customer can ever
-write one, so the entire chain is inert.
+Reviews is now the notable one: the vendor portal has a reviews screen, admin
+moderation is wired and working, and the data model supports it — but **no
+customer can ever write a review**, so the whole chain still has no input.
+
+Support is the same shape: an admin can reply, assign and close, but a customer
+has no way to open a ticket.
 
 ---
 
@@ -91,7 +89,6 @@ either be built API-side or removed:
 
 - **Export CSV / Export ledger / Download receipt** on several admin pages.
 - **Filter** buttons on audit-log, bookings and payouts lists.
-- **Message a user** from admin (endpoint exists, `POST /admin/users/:id/message`, but no compose UI).
 - **Offer retainer** on the influencer detail page — no concept in the data model.
 
 ---
@@ -134,15 +131,14 @@ either be built API-side or removed:
 
 ## 9. Suggested order of work
 
-1. **Wire the admin write actions** (§2). Biggest gap, no new API needed, and it
-   unblocks payouts and moderation. Start with campaign submission approval and
-   the payout run, since those unblock money.
-2. **Customer accounts on the storefront** (§3) — sign-in, order and booking
-   history. The API and the guest-claim path already exist.
-3. **Support ticketing UI** (§3), customer and admin sides.
-4. **Product reviews on the storefront** (§3), which activates the vendor and
+1. ~~Wire the admin write actions~~ — done.
+2. ~~Customer accounts on the storefront~~ — done.
+3. **Resolve the Paystack key** (§6). Now the highest-value item: it unblocks
+   KYC, which unblocks payout approval, which is the only thing preventing
+   anyone from being paid. It is a credentials change, not code.
+4. **Customer-facing support UI** (§3) — the admin side is wired and waiting.
+5. **Product reviews on the storefront** (§3), which activates the vendor and
    admin review features already built.
-5. **Resolve the Paystack key** (§6) to unblock KYC and card payment.
 6. **Build an upload endpoint** (§6), then restore document, image and
    attachment fields.
 7. Decide the open product questions in §7.
