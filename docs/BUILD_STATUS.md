@@ -101,8 +101,8 @@ either be built API-side or removed:
 | **KYC** | `POST /me/bank-accounts` → 503. A Paystack key is set and lists banks, but Paystack rejects it for name enquiry (401/403). KYC needs a bank account, so the whole step is impassable. Needs a key with resolve permissions |
 | **Card payment** | No live payment key, so Paystack returns `simulated: true` and a fake checkout URL. Only Pay on Delivery completes |
 | **Email/SMS** | The dev mailer logs OTPs to the console. No real email or SMS is sent to anyone, ever |
-| **File uploads** | **Endpoint built** — `POST /uploads?purpose=kyc\|product\|booking\|campaign`, switchable between Cloudinary and R2 via `UPLOAD_DRIVER`. Needs keys, and is not yet wired into the KYC, product-image or attachment forms, which still take URLs |
-| **Product imagery** | Every product returns `image: null` / `images: []` |
+| **File uploads** | **Built and wired.** `POST /uploads?purpose=kyc\|product\|booking\|campaign`, switchable Cloudinary/R2 via `UPLOAD_DRIVER`. Wired into the storefront quote attachments, vendor product images and the affiliate/vendor KYC document fields. Needs keys — every upload 503s honestly until they land, then works with no code change |
+| **Product imagery** | Vendors can now attach images (they persist and render on the storefront), but only once storage keys are configured — until then uploads 503. No seeded imagery on existing products |
 
 ---
 
@@ -149,7 +149,8 @@ Flagged rather than quietly shipping ID scans to a public URL.
    anyone from being paid. It is a credentials change, not code.
 4. ~~Customer-facing support UI~~ — done.
 5. ~~Product reviews on the storefront~~ — done.
-6. ~~Build an upload endpoint~~ — done (`POST /uploads`). Remaining: add keys,
-   then wire it into the KYC document field, product images and quote
-   attachments, replacing the URL inputs those forms currently use.
+6. ~~Build an upload endpoint and wire it into the forms~~ — done. Remaining:
+   add Cloudinary or R2 keys, at which point every upload path works with no
+   code change. Product images additionally now persist (imageUrls on the
+   vendor product API), and the public catalogue already renders them.
 7. Decide the open product questions in §7.
