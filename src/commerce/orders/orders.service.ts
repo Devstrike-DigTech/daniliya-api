@@ -400,6 +400,9 @@ export class OrdersService {
       createdAt: o.createdAt,
       confirmedAt: o.confirmedAt,
       items: o.items.map((i) => ({
+        // The buyer needs this to review what they bought — titleSnapshot is a
+        // point-in-time copy and cannot be matched back to a product safely.
+        productId: i.productId,
         title: i.titleSnapshot,
         quantity: i.quantity,
         unitPrice: i.unitPrice,
