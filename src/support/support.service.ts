@@ -68,12 +68,20 @@ export class SupportService {
   async list(status?: TicketStatus) {
     const rows = await this.prisma.supportTicket.findMany({
       where: status ? { status } : undefined,
-      include: { openedBy: { select: { firstName: true, lastName: true } } },
+      include: {
+        openedBy: { select: { firstName: true, lastName: true } },
+        assignedTo: { select: { firstName: true, lastName: true } },
+      },
       orderBy: { updatedAt: 'desc' },
     });
     return rows.map((t) => ({
       ...this.present(t),
       from: `${t.openedBy.firstName} ${t.openedBy.lastName}`,
+      // Who owns it. Assignment was stored but never returned, so taking a
+      // ticket looked identical to nothing happening.
+      assignedTo: t.assignedTo
+        ? `${t.assignedTo.firstName} ${t.assignedTo.lastName}`
+        : null,
     }));
   }
 
@@ -162,7 +170,10 @@ export class SupportService {
   private async loadWithMessages(ref: string) {
     const ticket = await this.prisma.supportTicket.findUnique({
       where: { ref },
-      include: { messages: { orderBy: { createdAt: 'asc' } } },
+      include: {
+        messages: { orderBy: { createdAt: 'asc' } },
+        assignedTo: { select: { firstName: true, lastName: true } },
+      },
     });
     if (!ticket) throw new NotFoundException('Ticket not found');
     return ticket;
@@ -178,9 +189,17 @@ export class SupportService {
     };
   }
 
-  private presentWithThread(t: SupportTicket & { messages: TicketMessage[] }) {
+  private presentWithThread(
+    t: SupportTicket & {
+      messages: TicketMessage[];
+      assignedTo?: { firstName: string; lastName: string } | null;
+    },
+  ) {
     return {
       ...this.present(t),
+      assignedTo: t.assignedTo
+        ? `${t.assignedTo.firstName} ${t.assignedTo.lastName}`
+        : null,
       messages: t.messages.map((m) => ({
         fromAdmin: m.fromAdmin,
         body: m.body,

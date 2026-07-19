@@ -189,6 +189,9 @@ export class ReviewsService {
       rating: r.rating,
       body: r.body,
       status: r.status,
+      // Why it was flagged. Stored on moderation but previously never returned,
+      // so the reason one admin gave was invisible to everyone including them.
+      flagReason: r.flagReason,
       response: r.responseBody,
       createdAt: r.createdAt,
     };
