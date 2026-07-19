@@ -60,15 +60,17 @@ paying people.
 | Feature | API | UI |
 |---|---|---|
 | **Support ticketing** | `POST/GET /support/tickets`, replies, plus the admin side | **Admin side done** — reply, assign and close are wired and exercised. **Customers still cannot raise a ticket from anywhere**, so the queue only fills via the API |
-| **Product reviews** | `GET /products/:id/reviews`, `POST /reviews`, vendor respond, admin moderate | **Storefront shows no reviews and cannot submit one.** The vendor portal can respond; nothing produces a review to respond to |
+| **Product reviews** | `GET /products/:id/reviews`, `POST /reviews`, vendor respond, admin moderate | **Done.** Product pages show ratings, reviews and vendor replies; buyers write one from /account against the order containing the item. Vendor replies and admin moderation now have real input |
 | **Customer accounts** | `/auth/*`, `GET /orders`, `GET /bookings` | **Done.** `/account` offers sign in and registration, and lists orders and service requests. Registering with an email that checked out as a guest claims that history, and the verify screen says so |
 
-Reviews is now the notable one: the vendor portal has a reviews screen, admin
-moderation is wired and working, and the data model supports it — but **no
-customer can ever write a review**, so the whole chain still has no input.
+Support is now the only one left in this shape: an admin can reply, assign and
+close, but a customer has no way to open a ticket, so the queue can only be
+filled through the API.
 
-Support is the same shape: an admin can reply, assign and close, but a customer
-has no way to open a ticket.
+One rough edge on reviews: no endpoint reports what a customer has already
+reviewed, so the "Write a review" control reappears after a reload even for a
+product they have reviewed. The duplicate attempt is refused clearly with the
+API's own message, but a "my reviews" endpoint would let the UI hide it.
 
 ---
 
@@ -137,8 +139,8 @@ either be built API-side or removed:
    KYC, which unblocks payout approval, which is the only thing preventing
    anyone from being paid. It is a credentials change, not code.
 4. **Customer-facing support UI** (§3) — the admin side is wired and waiting.
-5. **Product reviews on the storefront** (§3), which activates the vendor and
-   admin review features already built.
+   This is the last API-complete feature with no way in for customers.
+5. ~~Product reviews on the storefront~~ — done.
 6. **Build an upload endpoint** (§6), then restore document, image and
    attachment fields.
 7. Decide the open product questions in §7.
