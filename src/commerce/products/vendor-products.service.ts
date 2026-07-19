@@ -17,6 +17,7 @@ export class VendorProductsService {
     const vendor = await this.vendorOrThrow(userId);
     const rows = await this.prisma.product.findMany({
       where: { vendorId: vendor.id },
+      include: { images: { orderBy: { sortOrder: 'asc' } } },
       orderBy: { createdAt: 'desc' },
     });
     return rows.map((p) => this.present(p));
@@ -37,7 +38,16 @@ export class VendorProductsService {
         stockQuantity: dto.stockQuantity,
         category: dto.category,
         status: ProductStatus.DRAFT,
+        images: dto.imageUrls?.length
+          ? {
+              create: dto.imageUrls.map((url, sortOrder) => ({
+                url,
+                sortOrder,
+              })),
+            }
+          : undefined,
       },
+      include: { images: { orderBy: { sortOrder: 'asc' } } },
     });
     return this.present(product);
   }
@@ -60,7 +70,32 @@ export class VendorProductsService {
         ...(dto.category !== undefined ? { category: dto.category } : {}),
       },
     });
-    return this.present(updated);
+
+    // Images are replaced wholesale when the field is present: the form always
+    // sends the full set it wants, so a removed image means a removed row.
+    // Omitting the field leaves the existing images untouched.
+    if (dto.imageUrls !== undefined) {
+      await this.prisma.$transaction([
+        this.prisma.productImage.deleteMany({ where: { productId: id } }),
+        ...(dto.imageUrls.length
+          ? [
+              this.prisma.productImage.createMany({
+                data: dto.imageUrls.map((url, sortOrder) => ({
+                  productId: id,
+                  url,
+                  sortOrder,
+                })),
+              }),
+            ]
+          : []),
+      ]);
+    }
+
+    const withImages = await this.prisma.product.findUniqueOrThrow({
+      where: { id },
+      include: { images: { orderBy: { sortOrder: 'asc' } } },
+    });
+    return this.present(withImages);
   }
 
   async remove(userId: string, id: string) {
@@ -140,6 +175,7 @@ export class VendorProductsService {
     category: string | null;
     status: ProductStatus;
     rejectedReason: string | null;
+    images?: { url: string }[];
   }) {
     return {
       id: p.id,
@@ -150,6 +186,7 @@ export class VendorProductsService {
       category: p.category,
       status: p.status,
       rejectedReason: p.rejectedReason,
+      imageUrls: (p.images ?? []).map((i) => i.url),
     };
   }
 }
