@@ -59,13 +59,12 @@ paying people.
 
 | Feature | API | UI |
 |---|---|---|
-| **Support ticketing** | `POST/GET /support/tickets`, replies, plus the admin side | **Admin side done** — reply, assign and close are wired and exercised. **Customers still cannot raise a ticket from anywhere**, so the queue only fills via the API |
+| **Support ticketing** | `POST/GET /support/tickets`, replies, plus the admin side | **Done both ends.** Customers raise and reply at /support; admins reply, assign and close. Verified round trip: customer ticket → admin queue → admin reply → visible in the customer's thread |
 | **Product reviews** | `GET /products/:id/reviews`, `POST /reviews`, vendor respond, admin moderate | **Done.** Product pages show ratings, reviews and vendor replies; buyers write one from /account against the order containing the item. Vendor replies and admin moderation now have real input |
 | **Customer accounts** | `/auth/*`, `GET /orders`, `GET /bookings` | **Done.** `/account` offers sign in and registration, and lists orders and service requests. Registering with an email that checked out as a guest claims that history, and the verify screen says so |
 
-Support is now the only one left in this shape: an admin can reply, assign and
-close, but a customer has no way to open a ticket, so the queue can only be
-filled through the API.
+**No API-complete feature is now missing its interface.** Every endpoint that
+represents a user-facing capability has a way in and a way to see the result.
 
 One rough edge on reviews: no endpoint reports what a customer has already
 reviewed, so the "Write a review" control reappears after a reload even for a
@@ -138,8 +137,7 @@ either be built API-side or removed:
 3. **Resolve the Paystack key** (§6). Now the highest-value item: it unblocks
    KYC, which unblocks payout approval, which is the only thing preventing
    anyone from being paid. It is a credentials change, not code.
-4. **Customer-facing support UI** (§3) — the admin side is wired and waiting.
-   This is the last API-complete feature with no way in for customers.
+4. ~~Customer-facing support UI~~ — done.
 5. ~~Product reviews on the storefront~~ — done.
 6. **Build an upload endpoint** (§6), then restore document, image and
    attachment fields.
