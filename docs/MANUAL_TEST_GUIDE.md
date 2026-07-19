@@ -272,6 +272,16 @@ Returns `BKG-…` with status `REQUESTED`. Then walk it as admin:
 `accept` → `start` → `complete`, and confirm the customer's `GET /bookings/:ref`
 reflects each step.
 
+Accepting is where the price is set — the note field is **`note`**, not
+`adminNote` (the response echoes it back as `adminNote`, which is easy to
+mirror wrongly):
+
+```json
+{ "quotedAmount": 45000, "note": "Includes pickup and delivery within Lekki." }
+```
+
+The booking moves to `CONFIRMED` with `quotedAmount` set.
+
 ### 3.6 Affiliate
 
 | Endpoint | Purpose |
