@@ -546,7 +546,7 @@ the second is ignored.
 Step 6 is the point of the journey: the buyer was never forced to register, and
 lost nothing by not doing so.
 
-### 4.2 Frontend (`:3000`)
+### 4.2 Frontend — buying (`:3000`)
 
 1. `/shop` — search, filter by category, open a product.
 2. Add to cart, set quantity, tick gift wrap.
@@ -560,6 +560,50 @@ lost nothing by not doing so.
 
 Then have a vendor ship that order (Journey 4) and re-check tracking: courier
 and tracking number appear where the page previously said "Not assigned".
+
+### 4.3 Frontend — booking a service (`:3000`)
+
+The other half of "shop **and book**". Both quote forms post to
+`POST /bookings/quote`, which accepts guests.
+
+1. `/services` — scroll to the quote block and submit the form:
+   service, full name, phone, email and a description are required; city,
+   address, budget and preferred date are optional.
+2. On success the form shows a **real `BKG-…` reference** returned by the API.
+   If it shows a reference, a booking exists — check it in the admin portal at
+   `:3004` → **Bookings**, or via `GET /admin/bookings/{ref}`.
+3. `/quote` — the same form in the standalone page. Submit a second request.
+4. `/services/laundry` — every "Get a Quote" button deep-links to
+   `/quote?service=laundry` and **pre-selects Laundry** in the picker.
+
+**Availability is API-driven — this is the part worth testing deliberately.**
+`GET /services` returns a `comingSoon` flag per vertical, and the storefront
+honours it:
+
+- `/services/dry-cleaning` is flagged coming soon, so **every** call-to-action on
+  it reads "Coming soon" and none links to the quote form.
+- Dry Cleaning is **absent from the service picker** on both forms.
+- `/services/laundry` is live, so its buttons all link through.
+
+To prove the wiring rather than trust it, flip a vertical in the database and
+reload — the picker and the buttons should follow without a deploy. A quick
+check that the two agree:
+
+```bash
+curl -s http://localhost:3000/services/dry-cleaning | grep -o "Coming soon" | wc -l   # > 0
+curl -s http://localhost:3000/services/dry-cleaning | grep -o "quote?service" | wc -l # 0
+curl -s http://localhost:3000/services/laundry      | grep -o "quote?service" | wc -l # > 0
+```
+
+Note `grep -c` counts *lines*, not matches, and the HTML is minified onto few
+lines — use `grep -o … | wc -l` as above or you will read 1 for everything.
+
+5. Finish the loop as admin: accept the booking with a `quotedAmount`, then
+   `start` and `complete` it, checking the customer-facing status each time.
+
+**There is no attachments field, deliberately.** The API accepts attachment
+URLs, but nothing in the platform can upload a file — the old dropzone collected
+filenames and sent them nowhere. It stays out until an upload endpoint exists.
 
 ---
 
@@ -731,6 +775,8 @@ Ten checks that between them cover the money paths and the guarantees most
 likely to break:
 
 - [ ] Guest can buy with no account, and the order is trackable by reference
+- [ ] Guest can request a service quote and gets a real `BKG-` reference back
+- [ ] A `comingSoon` service is absent from the picker and offers no quote button
 - [ ] Checkout total equals the server quote exactly, in both fulfilment modes
 - [ ] Registering with a guest's email claims that order history
 - [ ] Non-ACTIVE products never appear in the public catalogue
