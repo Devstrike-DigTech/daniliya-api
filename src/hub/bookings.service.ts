@@ -2,11 +2,13 @@ import {
   BadRequestException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { Booking, BookingStatus, Prisma } from '@prisma/client';
 import { randomBytes } from 'crypto';
 import { AuditService } from '../audit/audit.service';
+import { MailService } from '../notifications/mail.service';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   AcceptBookingDto,
@@ -25,9 +27,12 @@ const TRANSITIONS: Record<BookingStatus, BookingStatus[]> = {
 
 @Injectable()
 export class BookingsService {
+  private readonly logger = new Logger(BookingsService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    private readonly mail: MailService,
   ) {}
 
   /** Public/authenticated quote request. userId is null for guests. */
@@ -59,6 +64,19 @@ export class BookingsService {
       },
       include: { vertical: { select: { name: true, slug: true } } },
     });
+
+    // Acknowledge the request straight away — best-effort, never blocks it.
+    try {
+      await this.mail.sendBookingReceived(booking.email, {
+        ref: booking.ref,
+        name: booking.name,
+        service: booking.vertical?.name ?? null,
+      });
+    } catch (e) {
+      this.logger.warn(
+        `Booking ack email for ${booking.ref} failed: ${(e as Error).message}`,
+      );
+    }
 
     return this.present(booking);
   }
@@ -140,7 +158,10 @@ export class BookingsService {
     ip?: string,
     extra: Prisma.BookingUpdateInput = {},
   ) {
-    const booking = await this.prisma.booking.findUnique({ where: { ref } });
+    const booking = await this.prisma.booking.findUnique({
+      where: { ref },
+      include: { vertical: { select: { name: true } } },
+    });
     if (!booking) throw new NotFoundException('Booking not found');
 
     if (!TRANSITIONS[booking.status].includes(to)) {
@@ -163,6 +184,23 @@ export class BookingsService {
       after: { status: to },
       ip,
     });
+
+    // Keep the requester informed on every admin action — best-effort.
+    try {
+      await this.mail.sendBookingStatus(updated.email, {
+        ref: updated.ref,
+        name: updated.name,
+        service: booking.vertical?.name ?? null,
+        status: to,
+        quotedAmount: updated.quotedAmount?.toString() ?? null,
+        note: updated.adminNote,
+        reason: updated.cancelReason,
+      });
+    } catch (e) {
+      this.logger.warn(
+        `Booking status email for ${updated.ref} failed: ${(e as Error).message}`,
+      );
+    }
 
     return this.present(updated);
   }

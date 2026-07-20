@@ -14,6 +14,7 @@ import {
   ApiOperation,
   ApiTags,
 } from '@nestjs/swagger';
+import { Public } from '../common/decorators/public.decorator';
 import {
   MAX_UPLOAD_BYTES,
   UPLOAD_PURPOSES,
@@ -59,5 +60,32 @@ export class UploadsController {
       );
     }
     return this.uploads.store(file, purpose as UploadPurpose);
+  }
+
+  /**
+   * Public upload for quote (booking) attachments only.
+   *
+   * The quote form takes guests ("no account needed"), so they must be able to
+   * attach photos of the job. Kept to the `booking` purpose alone and behind the
+   * same size + magic-byte checks and global rate limit, so it isn't a general
+   * open file host.
+   */
+  @Public()
+  @Post('quote')
+  @ApiConsumes('multipart/form-data')
+  @ApiOperation({ summary: 'Public upload for quote attachments (no account)' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: { file: { type: 'string', format: 'binary' } },
+    },
+  })
+  @UseInterceptors(
+    FileInterceptor('file', {
+      limits: { fileSize: MAX_UPLOAD_BYTES, files: 1 },
+    }),
+  )
+  quoteUpload(@UploadedFile() file: Express.Multer.File) {
+    return this.uploads.store(file, 'booking');
   }
 }

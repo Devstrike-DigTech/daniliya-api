@@ -253,6 +253,101 @@ export class MailService {
     });
   }
 
+  /** Acknowledge a new quote request the moment it comes in. */
+  async sendBookingReceived(
+    to: string,
+    booking: { ref: string; name: string; service: string | null },
+  ): Promise<void> {
+    await this.send({
+      to,
+      subject: `We've received your request (${booking.ref})`,
+      html: this.branded({
+        preheader: `Your request ${booking.ref} is with our team`,
+        heading: `Thanks, ${booking.name.split(' ')[0] || 'there'}`,
+        intro: `We've received your${booking.service ? ` ${booking.service}` : ''} request and our team will review it and reply with a quote shortly.`,
+        bodyHtml: detailRows([
+          ['Reference', booking.ref],
+          ...(booking.service
+            ? ([['Service', booking.service]] as [string, string][])
+            : []),
+        ]),
+      }),
+      devPreview: `Booking received ${booking.ref} → ${to}`,
+    });
+  }
+
+  /**
+   * Tell the requester their booking moved: confirmed (with the quote), started,
+   * completed, or cancelled/declined (with the reason).
+   */
+  async sendBookingStatus(
+    to: string,
+    booking: {
+      ref: string;
+      name: string;
+      service: string | null;
+      status: string;
+      quotedAmount?: string | number | null;
+      note?: string | null;
+      reason?: string | null;
+    },
+  ): Promise<void> {
+    const copy: Record<string, { subject: string; heading: string; line: string }> = {
+      CONFIRMED: {
+        subject: `Your request ${booking.ref} is confirmed`,
+        heading: 'Your request is confirmed',
+        line: 'Good news — we can take this on. Details are below.',
+      },
+      IN_PROGRESS: {
+        subject: `Work has started on ${booking.ref}`,
+        heading: "We've started your job",
+        line: 'Our team is now working on your request.',
+      },
+      COMPLETED: {
+        subject: `Your request ${booking.ref} is complete`,
+        heading: 'Your job is complete',
+        line: 'This request is now marked complete. Thank you for choosing Daniliya.',
+      },
+      CANCELLED: {
+        subject: `Update on your request ${booking.ref}`,
+        heading: 'Your request was cancelled',
+        line: "We're sorry — this request won't be going ahead.",
+      },
+    };
+
+    const c = copy[booking.status];
+    if (!c) return;
+
+    const rows: [string, string][] = [['Reference', booking.ref]];
+    if (booking.service) rows.push(['Service', booking.service]);
+    if (
+      booking.status === 'CONFIRMED' &&
+      booking.quotedAmount !== undefined &&
+      booking.quotedAmount !== null
+    ) {
+      rows.push(['Quote', this.naira(booking.quotedAmount)]);
+    }
+
+    const extra =
+      booking.status === 'CONFIRMED' && booking.note
+        ? `<p style="margin:16px 0 0;font-size:14px;line-height:1.6;color:${emailPalette.INK}"><strong>Note:</strong> ${esc(booking.note)}</p>`
+        : booking.status === 'CANCELLED' && booking.reason
+          ? `<p style="margin:16px 0 0;font-size:14px;line-height:1.6;color:${emailPalette.INK}"><strong>Reason:</strong> ${esc(booking.reason)}</p>`
+          : '';
+
+    await this.send({
+      to,
+      subject: c.subject,
+      html: this.branded({
+        preheader: c.subject,
+        heading: c.heading,
+        intro: c.line,
+        bodyHtml: detailRows(rows) + extra,
+      }),
+      devPreview: `Booking ${booking.ref} → ${booking.status} → ${to}`,
+    });
+  }
+
   /** ₦ figure for email bodies — mirrors the storefront's formatting. */
   private naira(v: string | number): string {
     return `₦${Number(v).toLocaleString('en-NG', { maximumFractionDigits: 0 })}`;
