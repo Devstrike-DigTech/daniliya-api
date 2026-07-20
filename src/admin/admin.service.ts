@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import {
   CommissionStatus,
   OrderStatus,
@@ -6,9 +10,14 @@ import {
   Prisma,
   ProductStatus,
 } from '@prisma/client';
+import { randomBytes } from 'crypto';
 import { AuditService } from '../audit/audit.service';
 import { PrismaService } from '../prisma/prisma.service';
-import { RejectProductDto } from './dto/admin.dto';
+import {
+  AdminCreateProductDto,
+  AdminUpdateProductDto,
+  RejectProductDto,
+} from './dto/admin.dto';
 
 @Injectable()
 export class AdminService {
@@ -96,6 +105,192 @@ export class AdminService {
       ip,
     });
     return updated;
+  }
+
+  // ── Product authoring (admin) ─────────────────────────────────────────
+
+  /** Approved vendors for the "attribute to vendor" picker. */
+  vendorsForSelect() {
+    return this.prisma.vendorProfile.findMany({
+      where: { isApproved: true },
+      select: { id: true, businessName: true },
+      orderBy: { businessName: 'asc' },
+    });
+  }
+
+  /**
+   * Create a product as the platform (vendorId null) or on a vendor's behalf.
+   * Admins have authority to publish straight to ACTIVE, unlike vendors whose
+   * products go through review.
+   */
+  async createProduct(dto: AdminCreateProductDto, adminId: string, ip?: string) {
+    const vendorId = dto.vendorId || null;
+    if (vendorId) await this.vendorOrThrow(vendorId);
+
+    const status = dto.publish === false ? ProductStatus.DRAFT : ProductStatus.ACTIVE;
+    const product = await this.prisma.product.create({
+      data: {
+        vendorId,
+        title: dto.title,
+        slug: await this.uniqueSlug(dto.title),
+        description: dto.description,
+        price: new Prisma.Decimal(dto.price),
+        commissionRate: new Prisma.Decimal(dto.commissionRate ?? 0),
+        stockQuantity: dto.stockQuantity,
+        category: dto.category,
+        status,
+        images: dto.imageUrls?.length
+          ? { create: dto.imageUrls.map((url, sortOrder) => ({ url, sortOrder })) }
+          : undefined,
+      },
+      include: { images: { orderBy: { sortOrder: 'asc' } } },
+    });
+
+    await this.audit.record({
+      actorId: adminId,
+      action: 'Created product',
+      targetType: 'Product',
+      targetId: product.id,
+      after: { title: product.title, status, vendorId },
+      ip,
+    });
+    return product;
+  }
+
+  /** Edit any product's fields, vendor attribution and images. */
+  async updateProduct(
+    id: string,
+    dto: AdminUpdateProductDto,
+    adminId: string,
+    ip?: string,
+  ) {
+    const existing = await this.prisma.product.findUnique({ where: { id } });
+    if (!existing) throw new NotFoundException('Product not found');
+
+    // vendorId: undefined = leave as-is; null/'' = platform; uuid = that vendor.
+    let vendorUpdate: string | null | undefined;
+    if (dto.vendorId !== undefined) {
+      const vendorId = dto.vendorId || null;
+      if (vendorId) await this.vendorOrThrow(vendorId);
+      vendorUpdate = vendorId;
+    }
+
+    const data: Prisma.ProductUncheckedUpdateInput = {
+      ...(dto.title !== undefined ? { title: dto.title } : {}),
+      ...(dto.description !== undefined ? { description: dto.description } : {}),
+      ...(dto.price !== undefined ? { price: new Prisma.Decimal(dto.price) } : {}),
+      ...(dto.commissionRate !== undefined
+        ? { commissionRate: new Prisma.Decimal(dto.commissionRate) }
+        : {}),
+      ...(dto.stockQuantity !== undefined
+        ? { stockQuantity: dto.stockQuantity }
+        : {}),
+      ...(dto.category !== undefined ? { category: dto.category } : {}),
+      ...(vendorUpdate !== undefined ? { vendorId: vendorUpdate } : {}),
+    };
+
+    const updated = await this.prisma.product.update({ where: { id }, data });
+
+    // Images are replaced wholesale when the field is present — the form always
+    // sends the full set it wants kept.
+    if (dto.imageUrls !== undefined) {
+      await this.prisma.$transaction([
+        this.prisma.productImage.deleteMany({ where: { productId: id } }),
+        ...(dto.imageUrls.length
+          ? [
+              this.prisma.productImage.createMany({
+                data: dto.imageUrls.map((url, sortOrder) => ({
+                  productId: id,
+                  url,
+                  sortOrder,
+                })),
+              }),
+            ]
+          : []),
+      ]);
+    }
+
+    await this.audit.record({
+      actorId: adminId,
+      action: 'Edited product',
+      targetType: 'Product',
+      targetId: id,
+      before: { title: existing.title, price: existing.price.toString() },
+      after: { title: updated.title, price: updated.price.toString() },
+      ip,
+    });
+
+    return this.prisma.product.findUniqueOrThrow({
+      where: { id },
+      include: {
+        vendor: { select: { id: true, businessName: true } },
+        images: { orderBy: { sortOrder: 'asc' } },
+      },
+    });
+  }
+
+  /** Take a live product off the storefront (reversible). */
+  delistProduct(id: string, adminId: string, ip?: string) {
+    return this.setListing(id, ProductStatus.REMOVED, 'Delisted product', adminId, ip);
+  }
+
+  /** Put a delisted (or draft) product back on the storefront. */
+  relistProduct(id: string, adminId: string, ip?: string) {
+    return this.setListing(id, ProductStatus.ACTIVE, 'Relisted product', adminId, ip);
+  }
+
+  private async setListing(
+    id: string,
+    to: ProductStatus,
+    action: string,
+    adminId: string,
+    ip?: string,
+  ) {
+    const product = await this.prisma.product.findUnique({ where: { id } });
+    if (!product) throw new NotFoundException('Product not found');
+    if (product.status === to) {
+      throw new BadRequestException(
+        `Product is already ${to.toLowerCase()}`,
+      );
+    }
+    const updated = await this.prisma.product.update({
+      where: { id },
+      data: { status: to },
+    });
+    await this.audit.record({
+      actorId: adminId,
+      action,
+      targetType: 'Product',
+      targetId: id,
+      before: { status: product.status },
+      after: { status: to },
+      ip,
+    });
+    return updated;
+  }
+
+  private async vendorOrThrow(vendorId: string) {
+    const vendor = await this.prisma.vendorProfile.findUnique({
+      where: { id: vendorId },
+      select: { id: true },
+    });
+    if (!vendor) throw new BadRequestException('That vendor does not exist');
+    return vendor;
+  }
+
+  private async uniqueSlug(title: string): Promise<string> {
+    const base =
+      title
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/(^-|-$)/g, '') || 'product';
+    for (let i = 0; i < 10; i++) {
+      const slug = i === 0 ? base : `${base}-${randomBytes(2).toString('hex')}`;
+      if (!(await this.prisma.product.findUnique({ where: { slug } })))
+        return slug;
+    }
+    return `${base}-${randomBytes(4).toString('hex')}`;
   }
 
   // ── Command centre ────────────────────────────────────────────────────

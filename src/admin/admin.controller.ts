@@ -17,7 +17,12 @@ import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Role, Roles } from '../common/decorators/roles.decorator';
 import { PlatformConfigService } from '../config/platform-config.service';
 import { AdminService } from './admin.service';
-import { RejectProductDto, UpdateConfigDto } from './dto/admin.dto';
+import {
+  AdminCreateProductDto,
+  AdminUpdateProductDto,
+  RejectProductDto,
+  UpdateConfigDto,
+} from './dto/admin.dto';
 
 const ipOf = (req: Request) => req.ip ?? undefined;
 
@@ -76,15 +81,66 @@ export class AdminController {
     });
   }
 
-  // Products moderation
+  // Products
   @Get('products')
   products(@Query('status') status?: ProductStatus, @Query('q') q?: string) {
     return this.admin.products(status, q);
   }
+
+  // Static path — must precede the ':id' route so it isn't captured as an id.
+  @Get('products/vendor-options')
+  @ApiOperation({ summary: 'Approved vendors for the product form picker' })
+  vendorOptions() {
+    return this.admin.vendorsForSelect();
+  }
+
+  @Post('products')
+  @ApiOperation({ summary: 'Create a product (platform-owned or for a vendor)' })
+  createProduct(
+    @Body() dto: AdminCreateProductDto,
+    @CurrentUser('id') a: string,
+    @Req() r: Request,
+  ) {
+    return this.admin.createProduct(dto, a, ipOf(r));
+  }
+
   @Get('products/:id')
   @ApiOperation({ summary: 'Product detail (any status)' })
   product(@Param('id') id: string) {
     return this.admin.product(id);
+  }
+
+  @Patch('products/:id')
+  @ApiOperation({ summary: 'Edit a product (fields, vendor, images)' })
+  updateProduct(
+    @Param('id') id: string,
+    @Body() dto: AdminUpdateProductDto,
+    @CurrentUser('id') a: string,
+    @Req() r: Request,
+  ) {
+    return this.admin.updateProduct(id, dto, a, ipOf(r));
+  }
+
+  @Post('products/:id/delist')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Take a product off the storefront' })
+  delist(
+    @Param('id') id: string,
+    @CurrentUser('id') a: string,
+    @Req() r: Request,
+  ) {
+    return this.admin.delistProduct(id, a, ipOf(r));
+  }
+
+  @Post('products/:id/relist')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Put a product back on the storefront' })
+  relist(
+    @Param('id') id: string,
+    @CurrentUser('id') a: string,
+    @Req() r: Request,
+  ) {
+    return this.admin.relistProduct(id, a, ipOf(r));
   }
   @Post('products/:id/approve')
   @HttpCode(HttpStatus.OK)

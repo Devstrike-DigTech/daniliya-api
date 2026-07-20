@@ -28,25 +28,17 @@ const DOCS = [...IMAGES, 'application/pdf'];
  */
 const RULES: Record<
   UploadPurpose,
-  { folder: string; mimes: string[]; maxBytes: number }
+  { subfolder: string; mimes: string[]; maxBytes: number }
 > = {
   // Identity documents — photo or scan.
-  kyc: { folder: 'daniliya/kyc', mimes: DOCS, maxBytes: 10 * 1024 * 1024 },
+  kyc: { subfolder: 'kyc', mimes: DOCS, maxBytes: 10 * 1024 * 1024 },
   // Catalogue imagery.
-  product: {
-    folder: 'daniliya/products',
-    mimes: IMAGES,
-    maxBytes: 5 * 1024 * 1024,
-  },
+  product: { subfolder: 'products', mimes: IMAGES, maxBytes: 5 * 1024 * 1024 },
   // Photos of a job, sometimes a spec sheet.
-  booking: {
-    folder: 'daniliya/bookings',
-    mimes: DOCS,
-    maxBytes: 10 * 1024 * 1024,
-  },
+  booking: { subfolder: 'bookings', mimes: DOCS, maxBytes: 10 * 1024 * 1024 },
   // Creator content samples.
   campaign: {
-    folder: 'daniliya/campaigns',
+    subfolder: 'campaigns',
     mimes: IMAGES,
     maxBytes: 5 * 1024 * 1024,
   },
@@ -92,6 +84,8 @@ const MAGIC: { mime: string; test: (b: Buffer) => boolean }[] = [
 export class UploadsService {
   private readonly logger = new Logger(UploadsService.name);
   private readonly driver: UploadDriver;
+  /** Root folder every upload is nested under, segregated per environment. */
+  private readonly root: string;
 
   constructor(
     config: ConfigService,
@@ -108,9 +102,33 @@ export class UploadsService {
         `UPLOAD_DRIVER="${choice}" is not recognised — falling back to cloudinary. Use "cloudinary" or "r2".`,
       );
     }
+
+    this.root = this.resolveRoot(config);
     this.logger.log(
-      `Upload driver: ${this.driver.name}${this.driver.configured ? '' : ' (NOT configured — uploads will 503 until its keys are set)'}`,
+      `Upload driver: ${this.driver.name} — root folder "${this.root}"${this.driver.configured ? '' : ' (NOT configured — uploads will 503 until its keys are set)'}`,
     );
+  }
+
+  /**
+   * Where uploads live, kept separate per environment so local/dev/staging/prod
+   * never share a bucket path (e.g. "daniliya/prod").
+   *
+   * UPLOAD_ROOT_FOLDER wins outright if set. Otherwise the root is
+   * "<base>/<env>", where the env is taken from UPLOAD_ENV, else derived from
+   * NODE_ENV (production → prod, test → test, anything else → local).
+   */
+  private resolveRoot(config: ConfigService): string {
+    const explicit = config.get<string>('UPLOAD_ROOT_FOLDER')?.trim();
+    if (explicit) return explicit.replace(/\/+$/, '');
+
+    const base = (config.get<string>('UPLOAD_BASE_FOLDER') ?? 'daniliya').trim();
+
+    let env = config.get<string>('UPLOAD_ENV')?.trim().toLowerCase();
+    if (!env) {
+      const node = (config.get<string>('NODE_ENV') ?? 'development').toLowerCase();
+      env = node === 'production' ? 'prod' : node === 'test' ? 'test' : 'local';
+    }
+    return `${base}/${env}`;
   }
 
   /** Surface for /health and diagnostics — never exposes the keys themselves. */
@@ -150,7 +168,7 @@ export class UploadsService {
       buffer: file.buffer,
       filename: file.originalname || 'upload',
       mimeType: sniffed,
-      folder: rule.folder,
+      folder: `${this.root}/${rule.subfolder}`,
     });
 
     return { ...stored, purpose };

@@ -100,6 +100,15 @@ export class EnvVars {
   // ── File storage ──────────────────────────────────────────────────────
   /** Which provider POST /uploads writes to: "cloudinary" or "r2". */
   @IsOptional() @IsString() UPLOAD_DRIVER?: string;
+  /**
+   * Upload folder segregation. UPLOAD_ROOT_FOLDER overrides the whole root;
+   * otherwise the root is `${UPLOAD_BASE_FOLDER || 'daniliya'}/${UPLOAD_ENV}`,
+   * with UPLOAD_ENV defaulting from NODE_ENV (local/test/prod). Set UPLOAD_ENV
+   * to "dev" or "staging" on those deployments.
+   */
+  @IsOptional() @IsString() UPLOAD_ROOT_FOLDER?: string;
+  @IsOptional() @IsString() UPLOAD_BASE_FOLDER?: string;
+  @IsOptional() @IsString() UPLOAD_ENV?: string;
   @IsOptional() @IsString() R2_ACCOUNT_ID?: string;
   @IsOptional() @IsString() R2_ACCESS_KEY_ID?: string;
   @IsOptional() @IsString() R2_SECRET_ACCESS_KEY?: string;
