@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import {
@@ -17,6 +18,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { randomBytes } from 'crypto';
 import { CommissionsService } from '../../commissions/commissions.service';
+import { MailService } from '../../notifications/mail.service';
 import { PaystackService } from '../../payments/paystack.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { PricingService } from '../pricing.service';
@@ -50,12 +52,15 @@ type ResolvedItem = {
 
 @Injectable()
 export class OrdersService {
+  private readonly logger = new Logger(OrdersService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly pricing: PricingService,
     private readonly paystack: PaystackService,
     private readonly commissions: CommissionsService,
     private readonly config: ConfigService,
+    private readonly mail: MailService,
   ) {}
 
   /** Where Paystack returns the buyer after checkout — the storefront's success page. */
@@ -217,6 +222,9 @@ export class OrdersService {
     if (isPod) {
       // POD is confirmed on placement, so attribute commissions now.
       await this.commissions.accrueForOrder(order.id);
+      // Card orders are confirmed by PaymentsService.markPaid, which sends their
+      // confirmation email; POD is confirmed here, so send it here.
+      await this.sendConfirmationEmail(order.ref, dto, items, breakdown.total);
       return {
         order: this.orderSummary(order),
         payment: {
@@ -301,6 +309,36 @@ export class OrdersService {
   }
 
   // ── Internals ─────────────────────────────────────────────────────────
+
+  /**
+   * Email the buyer their order confirmation. Best-effort: a mail failure must
+   * never fail the checkout that already succeeded, so it is caught and logged.
+   */
+  private async sendConfirmationEmail(
+    ref: string,
+    dto: PlaceOrderDto,
+    items: ResolvedItem[],
+    total: Prisma.Decimal,
+  ): Promise<void> {
+    const to = MailService.recipientFor(dto.contact);
+    if (!to) return;
+    try {
+      await this.mail.sendOrderConfirmation(to, {
+        ref,
+        total: total.toString(),
+        paymentMethod: dto.paymentMethod,
+        fulfilmentMode: dto.mode,
+        items: items.map((i) => ({
+          title: i.product.title,
+          quantity: i.quantity,
+        })),
+      });
+    } catch (e) {
+      this.logger.warn(
+        `Order confirmation email for ${ref} failed: ${(e as Error).message}`,
+      );
+    }
+  }
 
   private async loadCartItems(userId: string): Promise<ResolvedItem[]> {
     const cart = await this.prisma.cart.findUnique({

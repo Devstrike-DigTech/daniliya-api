@@ -1,6 +1,7 @@
 import { Injectable, Logger, UnauthorizedException } from '@nestjs/common';
-import { OrderStatus, PaymentStatus } from '@prisma/client';
+import { OrderStatus, PaymentMethod, PaymentStatus, Prisma } from '@prisma/client';
 import { CommissionsService } from '../commissions/commissions.service';
+import { MailService } from '../notifications/mail.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { PaystackService } from './paystack.service';
 
@@ -12,6 +13,7 @@ export class PaymentsService {
     private readonly prisma: PrismaService,
     private readonly paystack: PaystackService,
     private readonly commissions: CommissionsService,
+    private readonly mail: MailService,
   ) {}
 
   /**
@@ -103,7 +105,7 @@ export class PaymentsService {
   private async markPaid(reference: string) {
     const payment = await this.prisma.payment.findUnique({
       where: { providerRef: reference },
-      include: { order: true },
+      include: { order: { include: { items: true } } },
     });
     if (!payment) {
       this.logger.warn(`charge.success for unknown reference ${reference}`);
@@ -130,6 +132,38 @@ export class PaymentsService {
     // Attribute commissions once the order is confirmed (idempotent).
     await this.commissions.accrueForOrder(payment.orderId);
     this.logger.log(`Order ${payment.orderId} confirmed via ${reference}`);
+
+    // The early-return above makes this fire exactly once per order, so a
+    // webhook replay or a verify-after-webhook won't send a second email.
+    await this.sendConfirmationEmail(payment.order, payment.method);
+  }
+
+  /**
+   * Email the buyer their confirmation once a card order is paid. Best-effort:
+   * a mail failure must not fail the payment that already settled.
+   */
+  private async sendConfirmationEmail(
+    order: Prisma.OrderGetPayload<{ include: { items: true } }>,
+    method: PaymentMethod,
+  ): Promise<void> {
+    const to = MailService.recipientFor(order.contact);
+    if (!to) return;
+    try {
+      await this.mail.sendOrderConfirmation(to, {
+        ref: order.ref,
+        total: order.total.toString(),
+        paymentMethod: method,
+        fulfilmentMode: order.fulfilmentMode,
+        items: order.items.map((i) => ({
+          title: i.titleSnapshot,
+          quantity: i.quantity,
+        })),
+      });
+    } catch (e) {
+      this.logger.warn(
+        `Order confirmation email for ${order.ref} failed: ${(e as Error).message}`,
+      );
+    }
   }
 
   private async markFailed(reference: string) {

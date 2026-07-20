@@ -1,11 +1,18 @@
 import {
   BadRequestException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
-import { OrderStatus, PaymentStatus } from '@prisma/client';
+import {
+  FulfilmentMode,
+  OrderStatus,
+  PaymentStatus,
+  Prisma,
+} from '@prisma/client';
 import { AuditService } from '../../audit/audit.service';
 import { CommissionsService } from '../../commissions/commissions.service';
+import { MailService } from '../../notifications/mail.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AdvanceOrderDto } from './dto/orders.dto';
 
@@ -23,10 +30,13 @@ const FULFILMENT_RANK: Record<OrderStatus, number> = {
 
 @Injectable()
 export class AdminOrdersService {
+  private readonly logger = new Logger(AdminOrdersService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly commissions: CommissionsService,
     private readonly audit: AuditService,
+    private readonly mail: MailService,
   ) {}
 
   async list(status?: OrderStatus) {
@@ -213,6 +223,11 @@ export class AdminOrdersService {
       ip,
     });
 
+    await this.notifyStatus(order, target, {
+      courier: dto.courier,
+      trackingNumber: dto.trackingNumber,
+    });
+
     return { ref: order.ref, status: target };
   }
 
@@ -281,6 +296,34 @@ export class AdminOrdersService {
       ip,
     });
 
+    await this.notifyStatus(order, to);
+
     return { ref: order.ref, status: to };
+  }
+
+  /**
+   * Email the buyer that their order changed state. Best-effort — a mail
+   * failure must not undo a fulfilment step or reversal that already committed.
+   */
+  private async notifyStatus(
+    order: { ref: string; contact: Prisma.JsonValue; fulfilmentMode: FulfilmentMode },
+    status: OrderStatus,
+    ship?: { courier?: string | null; trackingNumber?: string | null },
+  ): Promise<void> {
+    const to = MailService.recipientFor(order.contact);
+    if (!to) return;
+    try {
+      await this.mail.sendOrderStatusUpdate(to, {
+        ref: order.ref,
+        status,
+        fulfilmentMode: order.fulfilmentMode,
+        courier: ship?.courier ?? null,
+        trackingNumber: ship?.trackingNumber ?? null,
+      });
+    } catch (e) {
+      this.logger.warn(
+        `Status email for ${order.ref} failed: ${(e as Error).message}`,
+      );
+    }
   }
 }

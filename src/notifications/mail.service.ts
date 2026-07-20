@@ -61,6 +61,146 @@ export class MailService {
     });
   }
 
+  /** Sent once an order is confirmed (POD placement or a successful card charge). */
+  async sendOrderConfirmation(
+    to: string,
+    order: {
+      ref: string;
+      total: string | number;
+      paymentMethod: string;
+      fulfilmentMode: string;
+      items: { title: string; quantity: number }[];
+    },
+  ): Promise<void> {
+    const rows = order.items
+      .map(
+        (i) =>
+          `<tr><td style="padding:4px 0">${i.title}</td>` +
+          `<td style="padding:4px 0;text-align:right">×${i.quantity}</td></tr>`,
+      )
+      .join('');
+    const pickup = order.fulfilmentMode === 'PICKUP';
+    const pay =
+      order.paymentMethod === 'PAY_ON_DELIVERY' ? 'Pay on delivery' : 'Paid online';
+    await this.send({
+      to,
+      subject: `Your Daniliya order ${order.ref} is confirmed`,
+      html:
+        `<p>Thanks for your order — we've received it and it's now being prepared.</p>` +
+        `<p><strong>Reference:</strong> ${order.ref}<br/>` +
+        `<strong>Fulfilment:</strong> ${pickup ? 'Store pickup' : 'Delivery'}<br/>` +
+        `<strong>Payment:</strong> ${pay}</p>` +
+        `<table style="width:100%;border-collapse:collapse">${rows}</table>` +
+        `<p style="margin-top:8px"><strong>Total: ${this.naira(order.total)}</strong></p>` +
+        `<p><a href="${this.trackUrl(order.ref)}">Track your order</a></p>`,
+      devPreview: `Order confirmation ${order.ref} → ${to} (${this.naira(order.total)})`,
+    });
+  }
+
+  /**
+   * Sent when an order moves along the fulfilment ladder (packed, shipped,
+   * delivered, completed) or is cancelled/refunded. Statuses we don't announce
+   * to the buyer (e.g. CONFIRMED, which the confirmation email already covers)
+   * are silently skipped.
+   */
+  async sendOrderStatusUpdate(
+    to: string,
+    order: {
+      ref: string;
+      status: string;
+      fulfilmentMode: string;
+      courier?: string | null;
+      trackingNumber?: string | null;
+    },
+  ): Promise<void> {
+    const pickup = order.fulfilmentMode === 'PICKUP';
+    const copy: Record<string, { subject: string; line: string }> = {
+      PROCESSING: {
+        subject: `Your order ${order.ref} is being packed`,
+        line: `We're preparing your order for ${pickup ? 'pickup' : 'dispatch'}.`,
+      },
+      SHIPPED: pickup
+        ? {
+            subject: `Your order ${order.ref} is ready for pickup`,
+            line: 'Your order is ready to collect from our store.',
+          }
+        : {
+            subject: `Your order ${order.ref} has shipped`,
+            line: 'Good news — your order is on its way.',
+          },
+      DELIVERED: pickup
+        ? {
+            subject: `Your order ${order.ref} was collected`,
+            line: 'Thanks for collecting your order. We hope you love it.',
+          }
+        : {
+            subject: `Your order ${order.ref} was delivered`,
+            line: 'Your order has been delivered. We hope you love it.',
+          },
+      COMPLETED: {
+        subject: `Your order ${order.ref} is complete`,
+        line: 'Your order is complete. Thank you for shopping with Daniliya.',
+      },
+      CANCELLED: {
+        subject: `Your order ${order.ref} was cancelled`,
+        line: 'Your order has been cancelled. Any payment made is being reversed.',
+      },
+      REFUNDED: {
+        subject: `Your order ${order.ref} was refunded`,
+        line: 'Your order has been refunded to your original payment method.',
+      },
+    };
+
+    const c = copy[order.status];
+    if (!c) return;
+
+    const courierLine =
+      order.status === 'SHIPPED' && !pickup && order.courier
+        ? `<p><strong>Courier:</strong> ${order.courier}` +
+          (order.trackingNumber
+            ? ` · <strong>Tracking:</strong> ${order.trackingNumber}`
+            : '') +
+          `</p>`
+        : '';
+    await this.send({
+      to,
+      subject: c.subject,
+      html: `<p>${c.line}</p>${courierLine}<p><a href="${this.trackUrl(order.ref)}">Track your order</a></p>`,
+      devPreview: `Order ${order.ref} → ${order.status} → ${to}`,
+    });
+  }
+
+  /** ₦ figure for email bodies — mirrors the storefront's formatting. */
+  private naira(v: string | number): string {
+    return `₦${Number(v).toLocaleString('en-NG', { maximumFractionDigits: 0 })}`;
+  }
+
+  private webBase(): string {
+    return (
+      this.config.get<string>('WEB_APP_URL') ?? 'http://localhost:3000'
+    ).replace(/\/+$/, '');
+  }
+
+  private trackUrl(ref: string): string {
+    return `${this.webBase()}/order/track?ref=${encodeURIComponent(ref)}`;
+  }
+
+  /**
+   * Who order emails go to: the contact email the buyer entered at checkout,
+   * falling back to their account email. Returns null when neither is usable so
+   * callers can skip the send rather than throw.
+   */
+  static recipientFor(
+    contact: unknown,
+    fallback?: string | null,
+  ): string | null {
+    if (contact && typeof contact === 'object' && !Array.isArray(contact)) {
+      const e = (contact as Record<string, unknown>).email;
+      if (typeof e === 'string' && e.includes('@')) return e;
+    }
+    return fallback && fallback.includes('@') ? fallback : null;
+  }
+
   private async send(opts: {
     to: string;
     subject: string;
