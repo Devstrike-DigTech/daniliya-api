@@ -1,8 +1,11 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { CommissionMode } from '@prisma/client';
 import { Type } from 'class-transformer';
 import {
   ArrayMaxSize,
   IsArray,
+  IsBoolean,
+  IsEnum,
   IsInt,
   IsNotEmpty,
   IsNumber,
@@ -40,6 +43,28 @@ export class CreateProductDto {
   @IsString()
   category?: string;
 
+  @ApiPropertyOptional({ description: 'Vendor / cost price — your cost basis' })
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  costPrice?: number;
+
+  @ApiPropertyOptional({ default: true })
+  @IsOptional()
+  @IsBoolean()
+  affiliateEligible?: boolean;
+
+  @ApiPropertyOptional({ default: true })
+  @IsOptional()
+  @IsBoolean()
+  influencerEligible?: boolean;
+
+  @ApiPropertyOptional({ enum: CommissionMode })
+  @IsOptional()
+  @IsEnum(CommissionMode)
+  commissionMode?: CommissionMode;
+
   @IsOptional()
   @IsArray()
   @ArrayMaxSize(8)
@@ -76,6 +101,28 @@ export class UpdateProductDto {
   @IsOptional()
   @IsString()
   category?: string;
+
+  @ApiPropertyOptional({ description: 'Vendor / cost price — your cost basis' })
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  costPrice?: number;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsBoolean()
+  affiliateEligible?: boolean;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsBoolean()
+  influencerEligible?: boolean;
+
+  @ApiPropertyOptional({ enum: CommissionMode })
+  @IsOptional()
+  @IsEnum(CommissionMode)
+  commissionMode?: CommissionMode;
 
   @IsOptional()
   @IsArray()

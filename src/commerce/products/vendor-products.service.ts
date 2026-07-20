@@ -35,8 +35,13 @@ export class VendorProductsService {
         slug: await this.uniqueSlug(dto.title),
         description: dto.description,
         price: new Prisma.Decimal(dto.price),
+        costPrice:
+          dto.costPrice !== undefined ? new Prisma.Decimal(dto.costPrice) : null,
         stockQuantity: dto.stockQuantity,
         category: dto.category,
+        affiliateEligible: dto.affiliateEligible ?? true,
+        influencerEligible: dto.influencerEligible ?? true,
+        commissionMode: dto.commissionMode ?? undefined,
         status: ProductStatus.DRAFT,
         images: dto.imageUrls?.length
           ? {
@@ -64,10 +69,22 @@ export class VendorProductsService {
         ...(dto.price !== undefined
           ? { price: new Prisma.Decimal(dto.price) }
           : {}),
+        ...(dto.costPrice !== undefined
+          ? { costPrice: new Prisma.Decimal(dto.costPrice) }
+          : {}),
         ...(dto.stockQuantity !== undefined
           ? { stockQuantity: dto.stockQuantity }
           : {}),
         ...(dto.category !== undefined ? { category: dto.category } : {}),
+        ...(dto.affiliateEligible !== undefined
+          ? { affiliateEligible: dto.affiliateEligible }
+          : {}),
+        ...(dto.influencerEligible !== undefined
+          ? { influencerEligible: dto.influencerEligible }
+          : {}),
+        ...(dto.commissionMode !== undefined
+          ? { commissionMode: dto.commissionMode }
+          : {}),
       },
     });
 
@@ -171,10 +188,14 @@ export class VendorProductsService {
     title: string;
     slug: string;
     price: Prisma.Decimal;
+    costPrice?: Prisma.Decimal | null;
     stockQuantity: number;
     category: string | null;
     status: ProductStatus;
     rejectedReason: string | null;
+    affiliateEligible?: boolean;
+    influencerEligible?: boolean;
+    commissionMode?: string;
     images?: { url: string }[];
   }) {
     return {
@@ -182,10 +203,14 @@ export class VendorProductsService {
       title: p.title,
       slug: p.slug,
       price: p.price,
+      costPrice: p.costPrice ?? null,
       stockQuantity: p.stockQuantity,
       category: p.category,
       status: p.status,
       rejectedReason: p.rejectedReason,
+      affiliateEligible: p.affiliateEligible ?? true,
+      influencerEligible: p.influencerEligible ?? true,
+      commissionMode: p.commissionMode ?? 'INCLUSIVE',
       imageUrls: (p.images ?? []).map((i) => i.url),
     };
   }
