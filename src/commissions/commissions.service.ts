@@ -92,6 +92,13 @@ export class CommissionsService {
     });
     if (!affiliate || !affiliate.isActive) return;
 
+    // Only pay the referral when the order carries a product opted into the
+    // affiliate programme.
+    const eligible = await this.prisma.orderItem.count({
+      where: { orderId: order.id, product: { affiliateEligible: true } },
+    });
+    if (eligible === 0) return;
+
     await this.upsertCommission(
       order.id,
       affiliate.userId,
@@ -138,6 +145,12 @@ export class CommissionsService {
     }
 
     if (!influencerUserId) return;
+
+    // Only pay the creator when the order carries an influencer-eligible product.
+    const eligible = await this.prisma.orderItem.count({
+      where: { orderId: order.id, product: { influencerEligible: true } },
+    });
+    if (eligible === 0) return;
 
     const amount = await this.influencerAmount(campaignId, order.subtotal);
     if (amount.lte(0)) return;

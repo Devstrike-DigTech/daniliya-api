@@ -87,11 +87,17 @@ export class AdminController {
     return this.admin.products(status, q);
   }
 
-  // Static path — must precede the ':id' route so it isn't captured as an id.
+  // Static paths — must precede the ':id' route so they aren't captured as ids.
   @Get('products/vendor-options')
   @ApiOperation({ summary: 'Approved vendors for the product form picker' })
   vendorOptions() {
     return this.admin.vendorsForSelect();
+  }
+
+  @Get('products/finance')
+  @ApiOperation({ summary: 'Marketplace-wide product sales + profit' })
+  productsFinance() {
+    return this.admin.productsFinance();
   }
 
   @Post('products')

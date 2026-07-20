@@ -4,6 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import {
+  BeneficiaryType,
   CommissionStatus,
   OrderStatus,
   PayoutItemStatus,
@@ -44,13 +45,141 @@ export class AdminService {
     const product = await this.prisma.product.findUnique({
       where: { id },
       include: {
-        vendor: { select: { id: true, businessName: true } },
+        vendor: { select: { id: true, businessName: true, takeRateBps: true } },
         images: { orderBy: { sortOrder: 'asc' } },
         _count: { select: { orderItems: true, reviews: true } },
       },
     });
     if (!product) throw new NotFoundException('Product not found');
-    return product;
+    const economics = await this.productEconomics(product);
+    return { ...product, economics };
+  }
+
+  /** Order statuses where the money has actually been taken. */
+  private readonly PAID_STATUSES = [
+    OrderStatus.CONFIRMED,
+    OrderStatus.SHIPPED,
+    OrderStatus.DELIVERED,
+    OrderStatus.COMPLETED,
+  ];
+
+  /**
+   * Real per-product sales and profit from paid orders.
+   *
+   * Profit = revenue − cost − allocated affiliate/influencer commissions, where
+   * cost is the product's costPrice×units if set, else (for a vendor product)
+   * the vendor's net payout derived from their take-rate, else zero. Order-level
+   * perk commissions are apportioned to the product by its share of each order's
+   * subtotal.
+   */
+  private async productEconomics(product: {
+    id: string;
+    costPrice: Prisma.Decimal | null;
+    vendorId: string | null;
+    vendor?: { takeRateBps: number } | null;
+  }) {
+    const items = await this.prisma.orderItem.findMany({
+      where: { productId: product.id, order: { status: { in: this.PAID_STATUSES } } },
+      select: {
+        quantity: true,
+        totalPrice: true,
+        orderId: true,
+        order: { select: { subtotal: true } },
+      },
+    });
+
+    const zero = new Prisma.Decimal(0);
+    const revenue = items.reduce((s, i) => s.plus(i.totalPrice), zero);
+    const units = items.reduce((s, i) => s + i.quantity, 0);
+
+    // Allocate order-level affiliate/influencer commission by item subtotal share.
+    let perks = zero;
+    const orderIds = [...new Set(items.map((i) => i.orderId))];
+    if (orderIds.length) {
+      const records = await this.prisma.commissionRecord.findMany({
+        where: {
+          orderId: { in: orderIds },
+          beneficiaryType: {
+            in: [BeneficiaryType.AFFILIATE, BeneficiaryType.INFLUENCER],
+          },
+        },
+        select: { orderId: true, amount: true },
+      });
+      const byOrder = new Map<string, Prisma.Decimal>();
+      for (const r of records) {
+        byOrder.set(r.orderId, (byOrder.get(r.orderId) ?? zero).plus(r.amount));
+      }
+      for (const i of items) {
+        const orderPerk = byOrder.get(i.orderId);
+        if (!orderPerk) continue;
+        const sub = new Prisma.Decimal(i.order.subtotal);
+        const share = sub.gt(0)
+          ? new Prisma.Decimal(i.totalPrice).dividedBy(sub)
+          : zero;
+        perks = perks.plus(orderPerk.times(share));
+      }
+    }
+
+    let cost = zero;
+    if (product.costPrice != null) {
+      cost = new Prisma.Decimal(product.costPrice).times(units);
+    } else if (product.vendorId) {
+      const bps = product.vendor?.takeRateBps ?? 1000;
+      cost = revenue.times(10000 - bps).dividedBy(10000); // vendor's net payout
+    }
+
+    const profit = revenue.minus(cost).minus(perks);
+    return {
+      unitsSold: units,
+      revenue: revenue.toFixed(2),
+      cost: cost.toFixed(2),
+      perkCommissions: perks.toFixed(2),
+      profit: profit.toFixed(2),
+    };
+  }
+
+  /** Marketplace-wide product sales + profit for the Products summary cards. */
+  async productsFinance() {
+    const [salesAgg, vendorPayout, perkPayout, platformItems] = await Promise.all([
+      this.prisma.orderItem.aggregate({
+        where: { order: { status: { in: this.PAID_STATUSES } } },
+        _sum: { totalPrice: true },
+      }),
+      this.prisma.commissionRecord.aggregate({
+        where: { beneficiaryType: BeneficiaryType.VENDOR },
+        _sum: { amount: true },
+      }),
+      this.prisma.commissionRecord.aggregate({
+        where: {
+          beneficiaryType: {
+            in: [BeneficiaryType.AFFILIATE, BeneficiaryType.INFLUENCER],
+          },
+        },
+        _sum: { amount: true },
+      }),
+      // Platform products (no vendor) that carry an explicit cost.
+      this.prisma.orderItem.findMany({
+        where: {
+          order: { status: { in: this.PAID_STATUSES } },
+          product: { vendorId: null, costPrice: { not: null } },
+        },
+        select: { quantity: true, product: { select: { costPrice: true } } },
+      }),
+    ]);
+
+    const zero = new Prisma.Decimal(0);
+    const totalSales = salesAgg._sum.totalPrice ?? zero;
+    const platformCost = platformItems.reduce(
+      (s, i) =>
+        s.plus(new Prisma.Decimal(i.product.costPrice ?? 0).times(i.quantity)),
+      zero,
+    );
+    const profit = totalSales
+      .minus(vendorPayout._sum.amount ?? zero)
+      .minus(perkPayout._sum.amount ?? zero)
+      .minus(platformCost);
+
+    return { totalSales: totalSales.toFixed(2), totalProfit: profit.toFixed(2) };
   }
 
   async approveProduct(id: string, adminId: string, ip?: string) {
@@ -135,7 +264,12 @@ export class AdminService {
         slug: await this.uniqueSlug(dto.title),
         description: dto.description,
         price: new Prisma.Decimal(dto.price),
+        costPrice:
+          dto.costPrice !== undefined ? new Prisma.Decimal(dto.costPrice) : null,
         commissionRate: new Prisma.Decimal(dto.commissionRate ?? 0),
+        affiliateEligible: dto.affiliateEligible ?? true,
+        influencerEligible: dto.influencerEligible ?? true,
+        commissionMode: dto.commissionMode ?? undefined,
         stockQuantity: dto.stockQuantity,
         category: dto.category,
         status,
@@ -181,6 +315,18 @@ export class AdminService {
       ...(dto.price !== undefined ? { price: new Prisma.Decimal(dto.price) } : {}),
       ...(dto.commissionRate !== undefined
         ? { commissionRate: new Prisma.Decimal(dto.commissionRate) }
+        : {}),
+      ...(dto.costPrice !== undefined
+        ? { costPrice: new Prisma.Decimal(dto.costPrice) }
+        : {}),
+      ...(dto.affiliateEligible !== undefined
+        ? { affiliateEligible: dto.affiliateEligible }
+        : {}),
+      ...(dto.influencerEligible !== undefined
+        ? { influencerEligible: dto.influencerEligible }
+        : {}),
+      ...(dto.commissionMode !== undefined
+        ? { commissionMode: dto.commissionMode }
         : {}),
       ...(dto.stockQuantity !== undefined
         ? { stockQuantity: dto.stockQuantity }

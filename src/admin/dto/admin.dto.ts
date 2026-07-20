@@ -1,5 +1,10 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { AdminRole, AffiliateTier, TicketPriority } from '@prisma/client';
+import {
+  AdminRole,
+  AffiliateTier,
+  CommissionMode,
+  TicketPriority,
+} from '@prisma/client';
 import { Type } from 'class-transformer';
 import {
   ArrayMaxSize,
@@ -101,6 +106,28 @@ export class AdminCreateProductDto {
   @Max(100)
   commissionRate?: number;
 
+  @ApiPropertyOptional({ description: 'Cost / vendor price — the platform cost basis' })
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  costPrice?: number;
+
+  @ApiPropertyOptional({ default: true })
+  @IsOptional()
+  @IsBoolean()
+  affiliateEligible?: boolean;
+
+  @ApiPropertyOptional({ default: true })
+  @IsOptional()
+  @IsBoolean()
+  influencerEligible?: boolean;
+
+  @ApiPropertyOptional({ enum: CommissionMode, default: CommissionMode.INCLUSIVE })
+  @IsOptional()
+  @IsEnum(CommissionMode)
+  commissionMode?: CommissionMode;
+
   @ApiPropertyOptional({ default: true, description: 'Publish live vs save as draft' })
   @IsOptional()
   @IsBoolean()
@@ -156,6 +183,28 @@ export class AdminUpdateProductDto {
   @Min(0)
   @Max(100)
   commissionRate?: number;
+
+  @ApiPropertyOptional({ description: 'Cost / vendor price — the platform cost basis' })
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  costPrice?: number;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsBoolean()
+  affiliateEligible?: boolean;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsBoolean()
+  influencerEligible?: boolean;
+
+  @ApiPropertyOptional({ enum: CommissionMode })
+  @IsOptional()
+  @IsEnum(CommissionMode)
+  commissionMode?: CommissionMode;
 
   @IsOptional()
   @IsArray()
