@@ -32,6 +32,12 @@ export interface EmailOptions {
   button?: EmailButton;
   /** Optional small print under the body (e.g. "didn't request this?"). */
   footnote?: string;
+  /**
+   * Absolute URL to the brand emblem (served from the storefront's public
+   * folder). Shown beside the wordmark when present; omitted → text-only mark.
+   * Must be absolute — email clients can't resolve relative paths.
+   */
+  logoUrl?: string;
 }
 
 /** Escape a string for safe interpolation into email HTML. */
@@ -83,7 +89,23 @@ export function renderEmail(o: EmailOptions): string {
           <!-- Brand bar -->
           <tr>
             <td style="padding:4px 4px 20px">
-              <span style="font-size:22px;font-weight:800;letter-spacing:-0.5px;color:${INK}">Danili<span style="color:${BRAND}">ya</span></span>
+              <table role="presentation" cellpadding="0" cellspacing="0">
+                <tr>
+                  ${
+                    o.logoUrl
+                      ? `<td width="40" align="center" valign="middle"
+                            style="width:40px;height:40px;background:#ffffff;border:1px solid ${BORDER};border-radius:20px;padding:4px">
+                           <img src="${esc(o.logoUrl)}" width="34" height="34" alt="Daniliya"
+                                style="display:block;width:34px;height:34px;border:0"/>
+                         </td>
+                         <td style="width:10px">&nbsp;</td>`
+                      : ''
+                  }
+                  <td valign="middle">
+                    <span style="font-size:22px;font-weight:800;letter-spacing:-0.5px;color:${INK}">Danili<span style="color:${BRAND}">ya</span></span>
+                  </td>
+                </tr>
+              </table>
             </td>
           </tr>
 

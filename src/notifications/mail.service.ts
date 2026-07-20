@@ -6,6 +6,7 @@ import {
   emailPalette,
   esc,
   renderEmail,
+  type EmailOptions,
 } from './email-layout';
 
 /**
@@ -43,7 +44,7 @@ export class MailService {
     await this.send({
       to,
       subject: 'Your Daniliya verification code',
-      html: renderEmail({
+      html: this.branded({
         preheader: `Your verification code is ${code}`,
         heading: 'Verify your email',
         intro: 'Enter this code to confirm your email address and continue.',
@@ -59,7 +60,7 @@ export class MailService {
     await this.send({
       to,
       subject: 'Reset your Daniliya password',
-      html: renderEmail({
+      html: this.branded({
         preheader: 'Use the code below to reset your Daniliya password',
         heading: 'Reset your password',
         intro:
@@ -86,7 +87,7 @@ export class MailService {
     await this.send({
       to,
       subject,
-      html: renderEmail({
+      html: this.branded({
         preheader: subject,
         heading: subject,
         bodyHtml: paragraphs,
@@ -153,7 +154,7 @@ export class MailService {
     await this.send({
       to,
       subject: `Your Daniliya order ${order.ref} is confirmed`,
-      html: renderEmail({
+      html: this.branded({
         preheader: `Order ${order.ref} confirmed — ${this.naira(order.total)}`,
         heading: 'Your order is confirmed',
         intro: "Thanks for your order — we've received it and it's now being prepared.",
@@ -240,7 +241,7 @@ export class MailService {
     await this.send({
       to,
       subject: c.subject,
-      html: renderEmail({
+      html: this.branded({
         preheader: c.subject,
         heading: c.subject.replace(`Your order ${order.ref} `, 'Your order ')
           .replace(/^./, (m) => m.toUpperCase()),
@@ -265,6 +266,23 @@ export class MailService {
 
   private trackUrl(ref: string): string {
     return `${this.webBase()}/order/track?ref=${encodeURIComponent(ref)}`;
+  }
+
+  /**
+   * Absolute URL to the brand emblem the email header shows. Defaults to the
+   * storefront's public asset; EMAIL_LOGO_URL overrides it if the logo is
+   * hosted elsewhere (CDN, marketing site).
+   */
+  private logoUrl(): string {
+    return (
+      this.config.get<string>('EMAIL_LOGO_URL') ??
+      `${this.webBase()}/images/brand/emblem.png`
+    );
+  }
+
+  /** renderEmail with the brand logo injected, so every email carries it. */
+  private branded(opts: Omit<EmailOptions, 'logoUrl'>): string {
+    return renderEmail({ ...opts, logoUrl: this.logoUrl() });
   }
 
   /**
