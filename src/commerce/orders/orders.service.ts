@@ -287,6 +287,8 @@ export class OrdersService {
     return {
       ref: order.ref,
       status: order.status,
+      // So the tracking page can say "ready for pickup" instead of "shipped".
+      fulfilmentMode: order.fulfilmentMode,
       placedAt: order.createdAt,
       confirmedAt: order.confirmedAt,
       shippedAt: order.shippedAt,
