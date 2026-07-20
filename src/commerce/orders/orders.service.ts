@@ -14,6 +14,7 @@ import {
   UserRole,
   UserStatus,
 } from '@prisma/client';
+import { ConfigService } from '@nestjs/config';
 import { randomBytes } from 'crypto';
 import { CommissionsService } from '../../commissions/commissions.service';
 import { PaystackService } from '../../payments/paystack.service';
@@ -54,7 +55,16 @@ export class OrdersService {
     private readonly pricing: PricingService,
     private readonly paystack: PaystackService,
     private readonly commissions: CommissionsService,
+    private readonly config: ConfigService,
   ) {}
+
+  /** Where Paystack returns the buyer after checkout — the storefront's success page. */
+  private successUrl(ref: string): string {
+    const base = (
+      this.config.get<string>('WEB_APP_URL') ?? 'http://localhost:3000'
+    ).replace(/\/+$/, '');
+    return `${base}/order/success?ref=${encodeURIComponent(ref)}`;
+  }
 
   /** Server-side total for the current cart under a fulfilment mode. */
   async quote(userId: string, dto: QuoteDto) {
@@ -221,6 +231,10 @@ export class OrdersService {
       email: dto.contact.email,
       amount: breakdown.total,
       reference: order.payment!.providerRef!,
+      // Paystack sends the buyer back here after paying, appending ?reference=…;
+      // the success page verifies it and confirms the order without waiting on
+      // the webhook (which can't reach a localhost API at all).
+      callbackUrl: this.successUrl(order.ref),
     });
     await this.prisma.payment.update({
       where: { id: order.payment!.id },

@@ -37,6 +37,11 @@ export class EnvVars {
   @IsNotEmpty()
   CORS_ORIGIN!: string;
 
+  /** Storefront base URL — used for the Paystack callback so the buyer returns here. */
+  @IsOptional()
+  @IsString()
+  WEB_APP_URL?: string;
+
   // ── Data ──────────────────────────────────────────────────────────────
   @IsString()
   @IsNotEmpty()

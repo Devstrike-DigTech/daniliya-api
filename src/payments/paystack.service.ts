@@ -98,6 +98,40 @@ export class PaystackService {
   }
 
   /**
+   * Ask Paystack directly whether a transaction succeeded.
+   *
+   * This is the belt to the webhook's braces. On localhost — and anywhere the
+   * webhook can't reach us — the webhook never fires, so an order would sit
+   * PENDING forever. Verifying on the buyer's return confirms it regardless.
+   *
+   * `paid` is only true for Paystack status "success". In simulation mode there
+   * is no real transaction, so this reports not-paid rather than inventing one.
+   */
+  async verifyTransaction(
+    reference: string,
+  ): Promise<{ paid: boolean; status: string; simulated: boolean }> {
+    if (!this.secretKey) {
+      return { paid: false, status: 'simulated', simulated: true };
+    }
+    try {
+      const { data } = await this.http.get(
+        `/transaction/verify/${encodeURIComponent(reference)}`,
+        { headers: { Authorization: `Bearer ${this.secretKey}` } },
+      );
+      const status = String(data?.data?.status ?? 'unknown');
+      return { paid: status === 'success', status, simulated: false };
+    } catch (err) {
+      const reason = axios.isAxiosError(err)
+        ? JSON.stringify(err.response?.data ?? err.message)
+        : String(err);
+      this.logger.warn(`Paystack verify failed for ${reference}: ${reason}`);
+      // A failed verify is not a failed payment — report unknown so the caller
+      // leaves the order alone rather than marking it failed.
+      return { paid: false, status: 'unknown', simulated: false };
+    }
+  }
+
+  /**
    * Initiate a payout transfer. Real Paystack is a two-step (recipient +
    * transfer); simulated when no key so the payout engine is testable. The
    * `idempotencyKey` prevents a retry from double-paying.

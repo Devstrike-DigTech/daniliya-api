@@ -57,6 +57,49 @@ export class PaymentsService {
     return { received: true, duplicate: false };
   }
 
+  /**
+   * Confirm an order by asking Paystack about its transaction, rather than
+   * waiting for the webhook. Called when the buyer returns from checkout.
+   *
+   * Safe to call repeatedly and safe on an unknown/other reference: it only
+   * confirms on a genuine Paystack "success", and markPaid is idempotent. It
+   * never marks anything failed — a card the buyer abandoned just stays PENDING.
+   */
+  async verifyAndConfirm(reference: string) {
+    const payment = await this.prisma.payment.findUnique({
+      where: { providerRef: reference },
+      include: { order: { select: { ref: true, status: true } } },
+    });
+    if (!payment) {
+      return { ref: null, status: 'unknown' as const, paid: false };
+    }
+    // Already settled by the webhook (or a previous verify) — don't call out again.
+    if (payment.status === PaymentStatus.PAID) {
+      return {
+        ref: payment.order.ref,
+        status: payment.order.status,
+        paid: true,
+      };
+    }
+
+    const result = await this.paystack.verifyTransaction(reference);
+    if (result.paid) {
+      await this.markPaid(reference);
+      return {
+        ref: payment.order.ref,
+        status: OrderStatus.CONFIRMED,
+        paid: true,
+      };
+    }
+
+    return {
+      ref: payment.order.ref,
+      status: payment.order.status,
+      paid: false,
+      gateway: result.status,
+    };
+  }
+
   private async markPaid(reference: string) {
     const payment = await this.prisma.payment.findUnique({
       where: { providerRef: reference },
