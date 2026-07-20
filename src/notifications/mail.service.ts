@@ -1,6 +1,12 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Resend } from 'resend';
+import {
+  detailRows,
+  emailPalette,
+  esc,
+  renderEmail,
+} from './email-layout';
 
 /**
  * Transactional email via Resend.
@@ -37,7 +43,14 @@ export class MailService {
     await this.send({
       to,
       subject: 'Your Daniliya verification code',
-      html: `<p>Your verification code is <strong>${code}</strong>.</p><p>It expires in 10 minutes.</p>`,
+      html: renderEmail({
+        preheader: `Your verification code is ${code}`,
+        heading: 'Verify your email',
+        intro: 'Enter this code to confirm your email address and continue.',
+        bodyHtml: this.codePanel(code),
+        footnote:
+          "This code expires in 10 minutes. If you didn't request it, you can safely ignore this email.",
+      }),
       devPreview: `OTP for ${to}: ${code}`,
     });
   }
@@ -46,19 +59,49 @@ export class MailService {
     await this.send({
       to,
       subject: 'Reset your Daniliya password',
-      html: `<p>Use this token to reset your password: <strong>${token}</strong></p><p>It expires in 1 hour. If you didn't request this, ignore this email.</p>`,
+      html: renderEmail({
+        preheader: 'Use the code below to reset your Daniliya password',
+        heading: 'Reset your password',
+        intro:
+          'Use the code below to set a new password. It expires in 1 hour.',
+        bodyHtml: this.codePanel(token),
+        footnote:
+          "If you didn't ask to reset your password, ignore this email — your account is unchanged.",
+      }),
       devPreview: `Password reset token for ${to}: ${token}`,
     });
   }
 
   /** Generic notice — used by admin "message user" and invites. */
   async sendNotice(to: string, subject: string, body: string): Promise<void> {
+    const paragraphs = body
+      .split(/\n{2,}/)
+      .map(
+        (p) =>
+          `<p style="margin:0 0 14px;font-size:15px;line-height:1.6;color:${emailPalette.INK}">${esc(
+            p,
+          ).replace(/\n/g, '<br/>')}</p>`,
+      )
+      .join('');
     await this.send({
       to,
       subject,
-      html: `<p>${body.replace(/\n/g, '<br/>')}</p>`,
+      html: renderEmail({
+        preheader: subject,
+        heading: subject,
+        bodyHtml: paragraphs,
+      }),
       devPreview: `Notice to ${to} — ${subject}`,
     });
+  }
+
+  /** A large, monospaced panel for a one-time code or reset token. */
+  private codePanel(value: string): string {
+    return `<div style="margin:8px 0 4px;padding:18px;text-align:center;background:${emailPalette.CREAM};border:1px solid ${emailPalette.BORDER};border-radius:12px">
+      <span style="font-family:'SF Mono',Menlo,Consolas,monospace;font-size:26px;font-weight:700;letter-spacing:3px;color:${emailPalette.INK}">${esc(
+        value,
+      )}</span>
+    </div>`;
   }
 
   /** Sent once an order is confirmed (POD placement or a successful card charge). */
@@ -72,27 +115,52 @@ export class MailService {
       items: { title: string; quantity: number }[];
     },
   ): Promise<void> {
-    const rows = order.items
-      .map(
-        (i) =>
-          `<tr><td style="padding:4px 0">${i.title}</td>` +
-          `<td style="padding:4px 0;text-align:right">×${i.quantity}</td></tr>`,
-      )
-      .join('');
     const pickup = order.fulfilmentMode === 'PICKUP';
     const pay =
-      order.paymentMethod === 'PAY_ON_DELIVERY' ? 'Pay on delivery' : 'Paid online';
+      order.paymentMethod === 'PAY_ON_DELIVERY'
+        ? 'Pay on delivery'
+        : 'Paid online';
+
+    const itemRows = order.items
+      .map(
+        (i) =>
+          `<tr>
+             <td style="padding:8px 0;font-size:14px;color:${emailPalette.INK};border-bottom:1px solid ${emailPalette.BORDER}">${esc(
+               i.title,
+             )}</td>
+             <td style="padding:8px 0;font-size:14px;color:${emailPalette.MUTED};text-align:right;border-bottom:1px solid ${emailPalette.BORDER}">×${i.quantity}</td>
+           </tr>`,
+      )
+      .join('');
+
+    const body =
+      detailRows([
+        ['Reference', order.ref],
+        ['Fulfilment', pickup ? 'Store pickup' : 'Delivery'],
+        ['Payment', pay],
+      ]) +
+      `<p style="margin:20px 0 6px;font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:0.4px;color:${emailPalette.MUTED}">Your items</p>` +
+      `<table role="presentation" width="100%" cellpadding="0" cellspacing="0">${itemRows}</table>` +
+      `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-top:12px">
+         <tr>
+           <td style="font-size:15px;font-weight:800;color:${emailPalette.INK}">Total</td>
+           <td style="font-size:15px;font-weight:800;color:${emailPalette.INK};text-align:right">${this.naira(
+             order.total,
+           )}</td>
+         </tr>
+       </table>`;
+
     await this.send({
       to,
       subject: `Your Daniliya order ${order.ref} is confirmed`,
-      html:
-        `<p>Thanks for your order — we've received it and it's now being prepared.</p>` +
-        `<p><strong>Reference:</strong> ${order.ref}<br/>` +
-        `<strong>Fulfilment:</strong> ${pickup ? 'Store pickup' : 'Delivery'}<br/>` +
-        `<strong>Payment:</strong> ${pay}</p>` +
-        `<table style="width:100%;border-collapse:collapse">${rows}</table>` +
-        `<p style="margin-top:8px"><strong>Total: ${this.naira(order.total)}</strong></p>` +
-        `<p><a href="${this.trackUrl(order.ref)}">Track your order</a></p>`,
+      html: renderEmail({
+        preheader: `Order ${order.ref} confirmed — ${this.naira(order.total)}`,
+        heading: 'Your order is confirmed',
+        intro: "Thanks for your order — we've received it and it's now being prepared.",
+        bodyHtml: body,
+        button: { label: 'Track your order', url: this.trackUrl(order.ref) },
+        footnote: 'You can follow your order live from the link above at any time.',
+      }),
       devPreview: `Order confirmation ${order.ref} → ${to} (${this.naira(order.total)})`,
     });
   }
@@ -154,18 +222,32 @@ export class MailService {
     const c = copy[order.status];
     if (!c) return;
 
-    const courierLine =
+    const courierBlock =
       order.status === 'SHIPPED' && !pickup && order.courier
-        ? `<p><strong>Courier:</strong> ${order.courier}` +
-          (order.trackingNumber
-            ? ` · <strong>Tracking:</strong> ${order.trackingNumber}`
-            : '') +
-          `</p>`
+        ? detailRows(
+            [
+              ['Courier', order.courier] as [string, string],
+              ...(order.trackingNumber
+                ? ([['Tracking number', order.trackingNumber]] as [
+                    string,
+                    string,
+                  ][])
+                : []),
+            ].filter(Boolean) as [string, string][],
+          )
         : '';
+
     await this.send({
       to,
       subject: c.subject,
-      html: `<p>${c.line}</p>${courierLine}<p><a href="${this.trackUrl(order.ref)}">Track your order</a></p>`,
+      html: renderEmail({
+        preheader: c.subject,
+        heading: c.subject.replace(`Your order ${order.ref} `, 'Your order ')
+          .replace(/^./, (m) => m.toUpperCase()),
+        intro: c.line,
+        bodyHtml: detailRows([['Order', order.ref]]) + courierBlock,
+        button: { label: 'Track your order', url: this.trackUrl(order.ref) },
+      }),
       devPreview: `Order ${order.ref} → ${order.status} → ${to}`,
     });
   }
