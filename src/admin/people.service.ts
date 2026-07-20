@@ -3,11 +3,24 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { AffiliateTier, UserStatus } from '@prisma/client';
+import {
+  AffiliateTier,
+  OrderStatus,
+  UserRole,
+  UserStatus,
+} from '@prisma/client';
 import { AuditService } from '../audit/audit.service';
 import { MailService } from '../notifications/mail.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { ChangeTierDto, MessageUserDto, RejectDto } from './dto/admin.dto';
+
+/** Order statuses that count as money actually taken. */
+const PAID_STATUSES: OrderStatus[] = [
+  OrderStatus.CONFIRMED,
+  OrderStatus.SHIPPED,
+  OrderStatus.DELIVERED,
+  OrderStatus.COMPLETED,
+];
 
 /**
  * People moderation. Two independent axes:
@@ -21,6 +34,112 @@ export class AdminPeopleService {
     private readonly audit: AuditService,
     private readonly mail: MailService,
   ) {}
+
+  // ── Customers ─────────────────────────────────────────────────────────
+
+  /**
+   * Everyone who shops the storefront: role CUSTOMER, whether they registered
+   * (status ACTIVE) or checked out as a guest (status GUEST). Spend counts only
+   * money actually taken (paid orders).
+   */
+  async customers(q?: string) {
+    const users = await this.prisma.user.findMany({
+      where: {
+        role: UserRole.CUSTOMER,
+        ...(q
+          ? {
+              OR: [
+                { firstName: { contains: q, mode: 'insensitive' } },
+                { lastName: { contains: q, mode: 'insensitive' } },
+                { email: { contains: q, mode: 'insensitive' } },
+              ],
+            }
+          : {}),
+      },
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        email: true,
+        phone: true,
+        status: true,
+        createdAt: true,
+        _count: { select: { orders: true, bookings: true } },
+        orders: {
+          where: { status: { in: PAID_STATUSES } },
+          select: { total: true },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 200,
+    });
+
+    return users.map((u) => ({
+      id: u.id,
+      name: `${u.firstName} ${u.lastName}`.trim(),
+      email: u.email,
+      phone: u.phone,
+      status: u.status,
+      createdAt: u.createdAt,
+      orders: u._count.orders,
+      bookings: u._count.bookings,
+      totalSpent: u.orders.reduce((sum, o) => sum + Number(o.total), 0),
+    }));
+  }
+
+  async customer(id: string) {
+    const u = await this.prisma.user.findFirst({
+      where: { id, role: UserRole.CUSTOMER },
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        email: true,
+        phone: true,
+        status: true,
+        createdAt: true,
+        orders: {
+          select: {
+            ref: true,
+            status: true,
+            total: true,
+            channel: true,
+            createdAt: true,
+          },
+          orderBy: { createdAt: 'desc' },
+          take: 50,
+        },
+        bookings: {
+          select: {
+            ref: true,
+            status: true,
+            description: true,
+            quotedAmount: true,
+            createdAt: true,
+          },
+          orderBy: { createdAt: 'desc' },
+          take: 50,
+        },
+      },
+    });
+    if (!u) throw new NotFoundException('Customer not found');
+
+    const totalSpent = u.orders
+      .filter((o) => PAID_STATUSES.includes(o.status))
+      .reduce((sum, o) => sum + Number(o.total), 0);
+
+    return {
+      id: u.id,
+      name: `${u.firstName} ${u.lastName}`.trim(),
+      email: u.email,
+      phone: u.phone,
+      status: u.status,
+      createdAt: u.createdAt,
+      totalSpent,
+      orders: u.orders,
+      bookings: u.bookings,
+    };
+  }
 
   // ── Affiliates ────────────────────────────────────────────────────────
 

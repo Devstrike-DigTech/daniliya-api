@@ -25,6 +25,18 @@ const ipOf = (req: Request) => req.ip ?? undefined;
 export class AdminPeopleController {
   constructor(private readonly people: AdminPeopleService) {}
 
+  // Customers (storefront shoppers — registered or guest)
+  @Get('customers')
+  @ApiOperation({ summary: 'List customers with order/booking counts and spend' })
+  customers(@Query('q') q?: string) {
+    return this.people.customers(q);
+  }
+  @Get('customers/:id')
+  @ApiOperation({ summary: 'Customer detail with orders and bookings' })
+  customer(@Param('id') id: string) {
+    return this.people.customer(id);
+  }
+
   // Affiliates
   @Get('affiliates')
   affiliates(@Query('q') q?: string) {
