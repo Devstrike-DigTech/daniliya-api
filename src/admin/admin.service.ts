@@ -302,7 +302,22 @@ export class AdminService {
       OrderStatus.DELIVERED,
       OrderStatus.COMPLETED,
     ];
-    const [gmv, orders, users, pendingPayout, attribution] = await Promise.all([
+    // Midnight 6 days ago → a 7-day window including today.
+    const weekStart = new Date();
+    weekStart.setHours(0, 0, 0, 0);
+    weekStart.setDate(weekStart.getDate() - 6);
+
+    const [
+      gmv,
+      orders,
+      users,
+      pendingPayout,
+      attribution,
+      weekOrders,
+      pendingProducts,
+      payoutsInReview,
+      openTickets,
+    ] = await Promise.all([
       this.prisma.order.aggregate({
         where: { status: { in: paidStatuses } },
         _sum: { total: true },
@@ -318,7 +333,41 @@ export class AdminService {
         _count: true,
         where: { status: { in: paidStatuses } },
       }),
+      // Paid orders in the last 7 days, bucketed into a daily series below.
+      this.prisma.order.findMany({
+        where: {
+          status: { in: paidStatuses },
+          confirmedAt: { gte: weekStart },
+        },
+        select: { total: true, confirmedAt: true },
+      }),
+      this.prisma.product.count({ where: { status: 'PENDING_REVIEW' } }),
+      this.prisma.payoutBatch.count({ where: { status: 'REVIEW' } }),
+      this.prisma.supportTicket.count({ where: { status: 'OPEN' } }),
     ]);
+
+    // One bucket per day, oldest → newest, labelled by weekday.
+    const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const series = Array.from({ length: 7 }, (_, i) => {
+      const d = new Date(weekStart);
+      d.setDate(weekStart.getDate() + i);
+      return { day: days[d.getDay()], date: d, value: new Prisma.Decimal(0) };
+    });
+    for (const o of weekOrders) {
+      const when = o.confirmedAt ?? weekStart;
+      const idx = Math.floor(
+        (new Date(when).setHours(0, 0, 0, 0) - weekStart.getTime()) /
+          86_400_000,
+      );
+      if (idx >= 0 && idx < 7) {
+        series[idx].value = series[idx].value.plus(o.total);
+      }
+    }
+    const weekRevenue = series.reduce(
+      (sum, s) => sum.plus(s.value),
+      new Prisma.Decimal(0),
+    );
+
     return {
       gmv: gmv._sum.total ?? new Prisma.Decimal(0),
       orders,
@@ -328,6 +377,13 @@ export class AdminService {
         channel: a.channel,
         orders: a._count,
       })),
+      weekRevenue,
+      revenueSeries: series.map((s) => ({ day: s.day, value: s.value })),
+      attention: {
+        pendingProducts,
+        payoutsInReview,
+        openTickets,
+      },
     };
   }
 
