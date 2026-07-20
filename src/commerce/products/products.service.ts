@@ -1,6 +1,18 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { Prisma, ProductStatus } from '@prisma/client';
+import { CommissionMode, Prisma, ProductStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+
+/** Customer-facing price: base price plus the ADD_ON commission markup. */
+function displayPrice(p: {
+  price: Prisma.Decimal;
+  commissionRate: Prisma.Decimal;
+  commissionMode: CommissionMode;
+}): Prisma.Decimal {
+  if (p.commissionMode !== CommissionMode.ADD_ON) return p.price;
+  return p.price
+    .plus(p.price.times(p.commissionRate).dividedBy(100))
+    .toDecimalPlaces(2);
+}
 
 export interface CatalogQuery {
   q?: string;
@@ -72,7 +84,7 @@ export class ProductsService {
       slug: product.slug,
       title: product.title,
       description: product.description,
-      price: product.price,
+      price: displayPrice(product),
       category: product.category,
       inStock: product.stockQuantity > 0,
       stockQuantity: product.stockQuantity,
@@ -87,6 +99,8 @@ export class ProductsService {
     title: string;
     description: string | null;
     price: Prisma.Decimal;
+    commissionRate: Prisma.Decimal;
+    commissionMode: CommissionMode;
     category: string | null;
     stockQuantity: number;
     images: { url: string }[];
@@ -96,7 +110,7 @@ export class ProductsService {
       slug: p.slug,
       title: p.title,
       blurb: p.description,
-      price: p.price,
+      price: displayPrice(p),
       category: p.category,
       inStock: p.stockQuantity > 0,
       image: p.images[0]?.url ?? null,

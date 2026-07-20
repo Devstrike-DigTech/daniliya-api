@@ -596,7 +596,12 @@ model OrderItem {
   /// rewrite historical orders.
   titleSnapshot String
   quantity   Int
+  /// What the customer paid per unit (includes any ADD_ON commission markup).
   unitPrice  Decimal @db.Decimal(12, 2)
+  /// The seller's set price per unit before an ADD_ON markup. Equals unitPrice
+  /// for INCLUSIVE products. Vendor payout and profit are based on this so the
+  /// markup accrues to the platform, not the vendor. Null on pre-existing rows.
+  baseUnitPrice Decimal? @db.Decimal(12, 2)
   giftWrap   Boolean @default(false)
   giftMeta   Json?
   totalPrice Decimal @db.Decimal(12, 2)

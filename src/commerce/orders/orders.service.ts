@@ -5,6 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import {
+  CommissionMode,
   FulfilmentMode,
   OrderChannel,
   OrderStatus,
@@ -45,6 +46,8 @@ type ResolvedItem = {
     id: string;
     title: string;
     price: Prisma.Decimal;
+    commissionRate: Prisma.Decimal;
+    commissionMode: CommissionMode;
     status: ProductStatus;
     stockQuantity: number;
   };
@@ -71,6 +74,23 @@ export class OrdersService {
     return `${base}/order/success?ref=${encodeURIComponent(ref)}`;
   }
 
+  /**
+   * What the customer is charged per unit. For ADD_ON products the platform
+   * commission (commissionRate % of the set price) is added on top of the
+   * seller's price; INCLUSIVE products are charged their price as-is. The base
+   * price is preserved on the order item so vendor payout and profit stay tied
+   * to the seller's price, not the marked-up amount.
+   */
+  private effectiveUnitPrice(product: {
+    price: Prisma.Decimal;
+    commissionRate: Prisma.Decimal;
+    commissionMode: CommissionMode;
+  }): Prisma.Decimal {
+    if (product.commissionMode !== CommissionMode.ADD_ON) return product.price;
+    const markup = product.price.times(product.commissionRate).dividedBy(100);
+    return product.price.plus(markup).toDecimalPlaces(2);
+  }
+
   /** Server-side total for the current cart under a fulfilment mode. */
   async quote(userId: string, dto: QuoteDto) {
     const items = await this.loadCartItems(userId);
@@ -78,7 +98,7 @@ export class OrdersService {
 
     const breakdown = this.pricing.quote(
       items.map((i) => ({
-        unitPrice: i.product.price,
+        unitPrice: this.effectiveUnitPrice(i.product),
         quantity: i.quantity,
         giftWrap: i.giftWrap,
       })),
@@ -92,7 +112,7 @@ export class OrdersService {
     const items = await this.loadGuestItems(dto.items);
     const breakdown = this.pricing.quote(
       items.map((i) => ({
-        unitPrice: i.product.price,
+        unitPrice: this.effectiveUnitPrice(i.product),
         quantity: i.quantity,
         giftWrap: i.giftWrap,
       })),
@@ -145,7 +165,7 @@ export class OrdersService {
 
     const breakdown = this.pricing.quote(
       items.map((i) => ({
-        unitPrice: i.product.price,
+        unitPrice: this.effectiveUnitPrice(i.product),
         quantity: i.quantity,
         giftWrap: i.giftWrap,
       })),
@@ -177,15 +197,19 @@ export class OrdersService {
           contact: dto.contact as unknown as Prisma.InputJsonValue,
           confirmedAt: isPod ? new Date() : null,
           items: {
-            create: items.map((i) => ({
-              productId: i.productId,
-              titleSnapshot: i.product.title,
-              quantity: i.quantity,
-              unitPrice: i.product.price,
-              giftWrap: i.giftWrap,
-              giftMeta: i.giftMeta ?? undefined,
-              totalPrice: i.product.price.times(i.quantity),
-            })),
+            create: items.map((i) => {
+              const unit = this.effectiveUnitPrice(i.product);
+              return {
+                productId: i.productId,
+                titleSnapshot: i.product.title,
+                quantity: i.quantity,
+                unitPrice: unit,
+                baseUnitPrice: i.product.price,
+                giftWrap: i.giftWrap,
+                giftMeta: i.giftMeta ?? undefined,
+                totalPrice: unit.times(i.quantity),
+              };
+            }),
           },
           payment: {
             create: {

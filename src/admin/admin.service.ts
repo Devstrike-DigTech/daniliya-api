@@ -82,6 +82,8 @@ export class AdminService {
       where: { productId: product.id, order: { status: { in: this.PAID_STATUSES } } },
       select: {
         quantity: true,
+        unitPrice: true,
+        baseUnitPrice: true,
         totalPrice: true,
         orderId: true,
         order: { select: { subtotal: true } },
@@ -91,6 +93,12 @@ export class AdminService {
     const zero = new Prisma.Decimal(0);
     const revenue = items.reduce((s, i) => s.plus(i.totalPrice), zero);
     const units = items.reduce((s, i) => s + i.quantity, 0);
+    // The seller's base take, before any ADD_ON markup — the basis for the
+    // vendor's payout.
+    const baseRevenue = items.reduce(
+      (s, i) => s.plus((i.baseUnitPrice ?? i.unitPrice).times(i.quantity)),
+      zero,
+    );
 
     // Allocate order-level affiliate/influencer commission by item subtotal share.
     let perks = zero;
@@ -125,7 +133,8 @@ export class AdminService {
       cost = new Prisma.Decimal(product.costPrice).times(units);
     } else if (product.vendorId) {
       const bps = product.vendor?.takeRateBps ?? 1000;
-      cost = revenue.times(10000 - bps).dividedBy(10000); // vendor's net payout
+      // Vendor's net payout, on the base (pre-markup) take.
+      cost = baseRevenue.times(10000 - bps).dividedBy(10000);
     }
 
     const profit = revenue.minus(cost).minus(perks);

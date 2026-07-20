@@ -51,14 +51,17 @@ export class CommissionsService {
       include: { product: { select: { vendorId: true } } },
     });
 
-    // Sum item totals per vendor profile.
+    // Sum item totals per vendor profile — on the seller's BASE price, not the
+    // customer-facing price, so any ADD_ON commission markup accrues to the
+    // platform rather than inflating the vendor's payout.
     const byVendor = new Map<string, Prisma.Decimal>();
     for (const it of items) {
       const vid = it.product.vendorId;
       if (!vid) continue;
+      const base = (it.baseUnitPrice ?? it.unitPrice).times(it.quantity);
       byVendor.set(
         vid,
-        (byVendor.get(vid) ?? new Prisma.Decimal(0)).plus(it.totalPrice),
+        (byVendor.get(vid) ?? new Prisma.Decimal(0)).plus(base),
       );
     }
     if (byVendor.size === 0) return;
