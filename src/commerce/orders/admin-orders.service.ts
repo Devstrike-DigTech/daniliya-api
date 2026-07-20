@@ -7,6 +7,19 @@ import { OrderStatus, PaymentStatus } from '@prisma/client';
 import { AuditService } from '../../audit/audit.service';
 import { CommissionsService } from '../../commissions/commissions.service';
 import { PrismaService } from '../../prisma/prisma.service';
+import { AdvanceOrderDto } from './dto/orders.dto';
+
+/** Forward order along the fulfilment ladder; higher rank is further along. */
+const FULFILMENT_RANK: Record<OrderStatus, number> = {
+  PENDING: 0,
+  CONFIRMED: 1,
+  PROCESSING: 2,
+  SHIPPED: 3,
+  DELIVERED: 4,
+  COMPLETED: 5,
+  CANCELLED: -1,
+  REFUNDED: -1,
+};
 
 @Injectable()
 export class AdminOrdersService {
@@ -104,6 +117,103 @@ export class AdminOrdersService {
       cancelledAt: o.cancelledAt,
       createdAt: o.createdAt,
     };
+  }
+
+  /**
+   * Move an order forward through fulfilment: CONFIRMED → PROCESSING → SHIPPED →
+   * DELIVERED → COMPLETED. Admins fulfil Daniliya-owned orders (no vendor to
+   * ship them) and can push any order along; a vendor's own `ship` uses the
+   * same shipment record.
+   *
+   * Only ever forward, never from an unpaid or reversed order. Moving to SHIPPED
+   * needs a courier and writes the Shipment the buyer tracks.
+   */
+  async advance(
+    ref: string,
+    dto: AdvanceOrderDto,
+    adminId: string,
+    ip?: string,
+  ) {
+    const order = await this.prisma.order.findUnique({
+      where: { ref },
+      include: { shipment: true },
+    });
+    if (!order) throw new NotFoundException('Order not found');
+
+    if (order.status === OrderStatus.PENDING) {
+      throw new BadRequestException('This order has not been paid for yet');
+    }
+    if (
+      order.status === OrderStatus.CANCELLED ||
+      order.status === OrderStatus.REFUNDED
+    ) {
+      throw new BadRequestException(
+        `A ${order.status.toLowerCase()} order cannot be updated`,
+      );
+    }
+
+    const target = dto.status as OrderStatus;
+    if (FULFILMENT_RANK[target] <= FULFILMENT_RANK[order.status]) {
+      throw new BadRequestException(
+        `Cannot move a ${order.status.toLowerCase()} order to ${target.toLowerCase()} — fulfilment only moves forward`,
+      );
+    }
+    if (target === OrderStatus.SHIPPED && !dto.courier?.trim()) {
+      throw new BadRequestException(
+        'A courier is required to mark an order shipped',
+      );
+    }
+
+    const estimatedDelivery = dto.estimatedDelivery
+      ? new Date(dto.estimatedDelivery)
+      : undefined;
+
+    await this.prisma.$transaction(async (tx) => {
+      // Crossing into SHIPPED (now or already past it, if details are being
+      // corrected) creates/updates the shipment the buyer sees.
+      if (target === OrderStatus.SHIPPED) {
+        await tx.shipment.upsert({
+          where: { orderId: order.id },
+          create: {
+            orderId: order.id,
+            courier: dto.courier!.trim(),
+            trackingNumber: dto.trackingNumber?.trim() || null,
+            estimatedDelivery: estimatedDelivery ?? null,
+          },
+          update: {
+            courier: dto.courier!.trim(),
+            trackingNumber: dto.trackingNumber?.trim() || null,
+            ...(estimatedDelivery ? { estimatedDelivery } : {}),
+          },
+        });
+      }
+
+      await tx.order.update({
+        where: { id: order.id },
+        data: {
+          status: target,
+          // Keep the first timestamp for each milestone across later edits.
+          ...(target === OrderStatus.SHIPPED
+            ? { shippedAt: order.shippedAt ?? new Date() }
+            : {}),
+          ...(target === OrderStatus.DELIVERED
+            ? { deliveredAt: order.deliveredAt ?? new Date() }
+            : {}),
+        },
+      });
+    });
+
+    await this.audit.record({
+      actorId: adminId,
+      action: `Order → ${target.toLowerCase()}`,
+      targetType: 'Order',
+      targetId: order.id,
+      before: { status: order.status },
+      after: { status: target },
+      ip,
+    });
+
+    return { ref: order.ref, status: target };
   }
 
   refund(ref: string, adminId: string, ip?: string) {

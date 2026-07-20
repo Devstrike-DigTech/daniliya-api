@@ -7,6 +7,9 @@ import {
   IsBoolean,
   IsEmail,
   IsEnum,
+  IsIn,
+  IsDateString,
+  MaxLength,
   IsInt,
   IsNotEmpty,
   IsObject,
@@ -113,4 +116,36 @@ export class PlaceGuestOrderDto extends PlaceOrderDto {
   @ValidateNested({ each: true })
   @Type(() => GuestItemDto)
   items!: GuestItemDto[];
+}
+
+/** Fulfilment stages an admin can advance an order to (never backwards). */
+export const ADVANCEABLE_STATUSES = [
+  'PROCESSING',
+  'SHIPPED',
+  'DELIVERED',
+  'COMPLETED',
+] as const;
+export type AdvanceableStatus = (typeof ADVANCEABLE_STATUSES)[number];
+
+export class AdvanceOrderDto {
+  @ApiProperty({ enum: ADVANCEABLE_STATUSES })
+  @IsIn(ADVANCEABLE_STATUSES)
+  status!: AdvanceableStatus;
+
+  @ApiPropertyOptional({ description: 'Required when moving to SHIPPED' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
+  courier?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  trackingNumber?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsDateString()
+  estimatedDelivery?: string;
 }

@@ -15,6 +15,7 @@ import type { Request } from 'express';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Role, Roles } from '../../common/decorators/roles.decorator';
 import { AdminOrdersService } from './admin-orders.service';
+import { AdvanceOrderDto } from './dto/orders.dto';
 
 const ipOf = (req: Request) => req.ip ?? undefined;
 
@@ -35,6 +36,20 @@ export class AdminOrdersController {
   @ApiOperation({ summary: 'Order detail' })
   byRef(@Param('ref') ref: string) {
     return this.orders.byRef(ref);
+  }
+
+  @Post(':ref/status')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Advance fulfilment — PROCESSING/SHIPPED/DELIVERED/COMPLETED',
+  })
+  advance(
+    @Param('ref') ref: string,
+    @Body() dto: AdvanceOrderDto,
+    @CurrentUser('id') adminId: string,
+    @Req() req: Request,
+  ) {
+    return this.orders.advance(ref, dto, adminId, ipOf(req));
   }
 
   @Post(':ref/refund')
