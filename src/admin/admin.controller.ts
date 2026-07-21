@@ -148,6 +148,28 @@ export class AdminController {
   ) {
     return this.admin.relistProduct(id, a, ipOf(r));
   }
+
+  @Post('products/:id/feature')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: "Set as the storefront Builder's Handbook" })
+  feature(
+    @Param('id') id: string,
+    @CurrentUser('id') a: string,
+    @Req() r: Request,
+  ) {
+    return this.admin.featureProduct(id, a, ipOf(r));
+  }
+
+  @Post('products/:id/unfeature')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Remove as the featured book' })
+  unfeature(
+    @Param('id') id: string,
+    @CurrentUser('id') a: string,
+    @Req() r: Request,
+  ) {
+    return this.admin.unfeatureProduct(id, a, ipOf(r));
+  }
   @Post('products/:id/approve')
   @HttpCode(HttpStatus.OK)
   approve(

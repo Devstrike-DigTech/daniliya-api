@@ -385,6 +385,51 @@ export class AdminService {
     });
   }
 
+  /**
+   * Designate a product as the storefront "Builder's Handbook". Only one product
+   * holds the flag, so any current holder is cleared in the same transaction.
+   */
+  async featureProduct(id: string, adminId: string, ip?: string) {
+    const product = await this.prisma.product.findUnique({ where: { id } });
+    if (!product) throw new NotFoundException('Product not found');
+
+    await this.prisma.$transaction([
+      this.prisma.product.updateMany({
+        where: { isFeaturedBook: true, NOT: { id } },
+        data: { isFeaturedBook: false },
+      }),
+      this.prisma.product.update({
+        where: { id },
+        data: { isFeaturedBook: true },
+      }),
+    ]);
+    await this.audit.record({
+      actorId: adminId,
+      action: 'Set featured book',
+      targetType: 'Product',
+      targetId: id,
+      ip,
+    });
+    return { id, isFeaturedBook: true };
+  }
+
+  async unfeatureProduct(id: string, adminId: string, ip?: string) {
+    const product = await this.prisma.product.findUnique({ where: { id } });
+    if (!product) throw new NotFoundException('Product not found');
+    await this.prisma.product.update({
+      where: { id },
+      data: { isFeaturedBook: false },
+    });
+    await this.audit.record({
+      actorId: adminId,
+      action: 'Cleared featured book',
+      targetType: 'Product',
+      targetId: id,
+      ip,
+    });
+    return { id, isFeaturedBook: false };
+  }
+
   /** Take a live product off the storefront (reversible). */
   delistProduct(id: string, adminId: string, ip?: string) {
     return this.setListing(id, ProductStatus.REMOVED, 'Delisted product', adminId, ip);

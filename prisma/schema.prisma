@@ -493,6 +493,9 @@ model Product {
   influencerEligible Boolean    @default(true)
   /// Whether commission is taken from the set price or added on top.
   commissionMode CommissionMode @default(INCLUSIVE)
+  /// The single product shown as the "Builder's Handbook" on the storefront.
+  /// At most one product should have this set; the admin toggles it.
+  isFeaturedBook Boolean        @default(false)
   stockQuantity  Int            @default(0)
   category       String?
   status         ProductStatus  @default(DRAFT)

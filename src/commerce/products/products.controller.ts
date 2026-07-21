@@ -25,6 +25,14 @@ export class ProductsController {
     return this.products.categories();
   }
 
+  // Static path — must precede ':slug' so it isn't captured as a slug.
+  @Public()
+  @Get('featured-book')
+  @ApiOperation({ summary: 'The storefront Builder\'s Handbook (any status)' })
+  featuredBook() {
+    return this.products.featuredBook();
+  }
+
   @Public()
   @Get(':slug')
   @ApiOperation({ summary: 'Product detail by slug' })

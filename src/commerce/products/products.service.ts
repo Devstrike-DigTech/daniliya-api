@@ -69,6 +69,32 @@ export class ProductsService {
     return rows.map((r) => r.category).filter(Boolean);
   }
 
+  /**
+   * The product the admin designated as the storefront "Builder's Handbook".
+   * Returned whatever its status, so the hero can show its title/image/copy
+   * even while it's a draft — with `available` telling the UI whether it can be
+   * bought. Null when no product is featured.
+   */
+  async featuredBook() {
+    const product = await this.prisma.product.findFirst({
+      where: { isFeaturedBook: true },
+      include: { images: { orderBy: { sortOrder: 'asc' } } },
+    });
+    if (!product) return null;
+
+    return {
+      id: product.id,
+      slug: product.slug,
+      title: product.title,
+      description: product.description,
+      price: displayPrice(product),
+      images: product.images.map((i) => i.url),
+      status: product.status,
+      available:
+        product.status === ProductStatus.ACTIVE && product.stockQuantity > 0,
+    };
+  }
+
   async bySlug(slug: string) {
     const product = await this.prisma.product.findFirst({
       where: { slug, status: ProductStatus.ACTIVE },
