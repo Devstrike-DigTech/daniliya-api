@@ -35,7 +35,10 @@ export class AdminService {
         ...(status ? { status } : {}),
         ...(q ? { title: { contains: q, mode: 'insensitive' } } : {}),
       },
-      include: { vendor: { select: { businessName: true } } },
+      include: {
+        vendor: { select: { businessName: true } },
+        images: { orderBy: { sortOrder: 'asc' }, select: { url: true } },
+      },
       orderBy: { createdAt: 'desc' },
       take: 200,
     });
