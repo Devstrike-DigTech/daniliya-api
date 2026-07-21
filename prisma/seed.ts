@@ -243,20 +243,27 @@ async function main() {
     });
   }
 
-  console.log('Seeding catalogue products…');
-  for (const p of PRODUCTS) {
-    await prisma.product.upsert({
-      where: { slug: p.slug },
-      create: p,
-      update: p,
-    });
+  // Demo catalogue products are dev-only fixtures. Never seed them by default —
+  // production has real products and must not be polluted. Opt in explicitly
+  // with SEED_DEMO_PRODUCTS=true for a local/dev catalogue.
+  if (process.env.SEED_DEMO_PRODUCTS === 'true') {
+    console.log('Seeding demo catalogue products…');
+    for (const p of PRODUCTS) {
+      await prisma.product.upsert({
+        where: { slug: p.slug },
+        create: p,
+        update: p,
+      });
+    }
+  } else {
+    console.log('Skipping demo products (set SEED_DEMO_PRODUCTS=true to include).');
   }
 
   const steps = await prisma.tutorialStep.count();
   const questions = await prisma.assessmentQuestion.count();
-  const products = await prisma.product.count();
+  const verticals = await prisma.vertical.count();
   console.log(
-    `Done — ${steps} tutorial steps, ${questions} assessment questions, ${products} products.`,
+    `Done — ${steps} tutorial steps, ${questions} assessment questions, ${verticals} service verticals.`,
   );
 }
 
