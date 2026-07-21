@@ -66,12 +66,36 @@ export class OrdersService {
     private readonly mail: MailService,
   ) {}
 
-  /** Where Paystack returns the buyer after checkout — the storefront's success page. */
-  private successUrl(ref: string): string {
+  /**
+   * Where Paystack returns the buyer after checkout — the storefront's success
+   * page. Uses the origin the checkout was actually initiated from (so a payment
+   * started on dev/staging/local returns to that same site), but only if it is
+   * allow-listed; otherwise it falls back to the configured WEB_APP_URL. The
+   * allow-list guard stops a caller redirecting the post-payment buyer anywhere.
+   */
+  private successUrl(ref: string, returnOrigin?: string): string {
     const base = (
-      this.config.get<string>('WEB_APP_URL') ?? 'http://localhost:3000'
+      this.safeOrigin(returnOrigin) ??
+      this.config.get<string>('WEB_APP_URL') ??
+      'http://localhost:3000'
     ).replace(/\/+$/, '');
     return `${base}/order/success?ref=${encodeURIComponent(ref)}`;
+  }
+
+  /** The URL's origin iff it is in the CORS allow-list, else undefined. */
+  private safeOrigin(url?: string): string | undefined {
+    if (!url) return undefined;
+    let origin: string;
+    try {
+      origin = new URL(url).origin;
+    } catch {
+      return undefined;
+    }
+    const allowed = (this.config.get<string>('CORS_ORIGIN') ?? '')
+      .split(',')
+      .map((o) => o.trim().replace(/\/+$/, ''))
+      .filter(Boolean);
+    return allowed.includes(origin) ? origin : undefined;
   }
 
   /**
@@ -121,10 +145,13 @@ export class OrdersService {
     return { mode: dto.mode, ...breakdown };
   }
 
-  async place(userId: string, dto: PlaceOrderDto) {
+  async place(userId: string, dto: PlaceOrderDto, returnOrigin?: string) {
     const items = await this.loadCartItems(userId);
     if (items.length === 0) throw new BadRequestException('Your cart is empty');
-    return this.placeCore(userId, items, dto, { clearCartFor: userId });
+    return this.placeCore(userId, items, dto, {
+      clearCartFor: userId,
+      returnOrigin,
+    });
   }
 
   /**
@@ -132,17 +159,17 @@ export class OrdersService {
    * user keyed by the contact email, so registering with that same address
    * later claims the full order history — see AuthService.register.
    */
-  async placeGuest(dto: PlaceGuestOrderDto) {
+  async placeGuest(dto: PlaceGuestOrderDto, returnOrigin?: string) {
     const items = await this.loadGuestItems(dto.items);
     const customerId = await this.resolveGuestCustomer(dto.contact);
-    return this.placeCore(customerId, items, dto, {});
+    return this.placeCore(customerId, items, dto, { returnOrigin });
   }
 
   private async placeCore(
     userId: string,
     items: ResolvedItem[],
     dto: PlaceOrderDto,
-    opts: { clearCartFor?: string },
+    opts: { clearCartFor?: string; returnOrigin?: string },
   ) {
     if (dto.mode === FulfilmentMode.DELIVERY && !dto.deliveryAddress) {
       throw new BadRequestException(
@@ -266,7 +293,7 @@ export class OrdersService {
       // Paystack sends the buyer back here after paying, appending ?reference=…;
       // the success page verifies it and confirms the order without waiting on
       // the webhook (which can't reach a localhost API at all).
-      callbackUrl: this.successUrl(order.ref),
+      callbackUrl: this.successUrl(order.ref, opts.returnOrigin),
     });
     await this.prisma.payment.update({
       where: { id: order.payment!.id },

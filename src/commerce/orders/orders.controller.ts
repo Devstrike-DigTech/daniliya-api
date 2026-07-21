@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Get,
+  Headers,
   HttpCode,
   HttpStatus,
   Param,
@@ -42,8 +43,15 @@ export class OrdersController {
   @ApiBearerAuth()
   @Post('orders')
   @ApiOperation({ summary: 'Place an order from the cart (Pay Now or POD)' })
-  place(@CurrentUser('id') userId: string, @Body() dto: PlaceOrderDto) {
-    return this.orders.place(userId, dto);
+  place(
+    @CurrentUser('id') userId: string,
+    @Body() dto: PlaceOrderDto,
+    // The storefront the checkout came from, so Paystack returns the buyer to
+    // that same site. A header (not a body field) keeps the storefront and API
+    // independently deployable: an API that predates this simply ignores it.
+    @Headers('x-return-origin') returnOrigin?: string,
+  ) {
+    return this.orders.place(userId, dto, returnOrigin);
   }
 
   @Public()
@@ -59,8 +67,11 @@ export class OrdersController {
   @Public()
   @Post('orders/guest')
   @ApiOperation({ summary: 'Place an order without an account' })
-  placeGuest(@Body() dto: PlaceGuestOrderDto) {
-    return this.orders.placeGuest(dto);
+  placeGuest(
+    @Body() dto: PlaceGuestOrderDto,
+    @Headers('x-return-origin') returnOrigin?: string,
+  ) {
+    return this.orders.placeGuest(dto, returnOrigin);
   }
 
   @ApiBearerAuth()
