@@ -56,20 +56,32 @@ export class MailService {
     });
   }
 
-  async sendPasswordReset(to: string, token: string): Promise<void> {
+  async sendPasswordReset(
+    to: string,
+    token: string,
+    link?: string,
+  ): Promise<void> {
+    // With a link (the portal told us where its reset page is) send a one-click
+    // button; otherwise fall back to a code the user pastes in.
     await this.send({
       to,
       subject: 'Reset your Daniliya password',
       html: this.branded({
-        preheader: 'Use the code below to reset your Daniliya password',
+        preheader: link
+          ? 'Click the button to reset your Daniliya password'
+          : 'Use the code below to reset your Daniliya password',
         heading: 'Reset your password',
-        intro:
-          'Use the code below to set a new password. It expires in 1 hour.',
-        bodyHtml: this.codePanel(token),
+        intro: link
+          ? 'Click the button below to set a new password. The link expires in 1 hour.'
+          : 'Use the code below to set a new password. It expires in 1 hour.',
+        bodyHtml: link
+          ? `<p style="margin:8px 0 0;font-size:13px;color:${emailPalette.MUTED}">Button not working? Paste this code on the reset page:</p>${this.codePanel(token)}`
+          : this.codePanel(token),
+        button: link ? { label: 'Reset password', url: link } : undefined,
         footnote:
           "If you didn't ask to reset your password, ignore this email — your account is unchanged.",
       }),
-      devPreview: `Password reset token for ${to}: ${token}`,
+      devPreview: `Password reset ${link ? `link for ${to}: ${link}` : `token for ${to}: ${token}`}`,
     });
   }
 

@@ -70,6 +70,13 @@ export class AdminCreateProductDto {
   @IsNotEmpty()
   title!: string;
 
+  @ApiPropertyOptional({
+    description: 'Custom URL slug (e.g. "builders-handbook"). Auto-generated from the title if omitted.',
+  })
+  @IsOptional()
+  @IsString()
+  slug?: string;
+
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()

@@ -4,6 +4,7 @@ import {
   IsNotEmpty,
   IsOptional,
   IsString,
+  IsUrl,
   Length,
   Matches,
   MinLength,
@@ -77,6 +78,16 @@ export class ForgotPasswordDto {
   @ApiProperty({ example: 'jane@daniliya.com' })
   @IsEmail()
   email!: string;
+
+  /**
+   * Base URL of the portal's reset page, e.g.
+   * https://dev-admin.daniliya.com/reset-password. The token is appended as
+   * ?token=… to build a one-click link. Ignored unless its origin is in the
+   * CORS allowlist, so a caller can't inject an arbitrary link.
+   */
+  @IsOptional()
+  @IsUrl({ require_tld: false })
+  resetUrl?: string;
 }
 
 export class ResetPasswordDto {

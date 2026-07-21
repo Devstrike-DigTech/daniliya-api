@@ -6,6 +6,7 @@ import {
   NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { User, UserStatus } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import { randomInt, randomUUID } from 'crypto';
@@ -36,7 +37,33 @@ export class AuthService {
     private readonly redis: RedisService,
     private readonly tokens: TokensService,
     private readonly mail: MailService,
+    private readonly config: ConfigService,
   ) {}
+
+  /**
+   * Build a one-click reset link from the portal's reset-page URL, but only if
+   * its origin is in the CORS allowlist — so a caller can't point the link at
+   * an arbitrary (phishing) domain. Returns undefined otherwise, and the email
+   * falls back to a code the user pastes in.
+   */
+  private safeResetLink(resetUrl: string | undefined, token: string): string | undefined {
+    if (!resetUrl) return undefined;
+    let origin: string;
+    try {
+      origin = new URL(resetUrl).origin;
+    } catch {
+      return undefined;
+    }
+    const allowed = (this.config.get<string>('CORS_ORIGIN') ?? '')
+      .split(',')
+      .map((o) => o.trim().replace(/\/+$/, ''))
+      .filter(Boolean);
+    if (!allowed.includes(origin)) return undefined;
+
+    const url = new URL(resetUrl);
+    url.searchParams.set('token', token);
+    return url.toString();
+  }
 
   // ── Registration & verification ───────────────────────────────────────
 
@@ -196,7 +223,8 @@ export class AuthService {
     if (user) {
       const token = randomUUID();
       await this.redis.set(this.resetKey(token), user.id, RESET_TTL_SECONDS);
-      await this.mail.sendPasswordReset(email, token);
+      const link = this.safeResetLink(dto.resetUrl, token);
+      await this.mail.sendPasswordReset(email, token, link);
     }
 
     return {

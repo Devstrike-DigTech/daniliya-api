@@ -270,7 +270,8 @@ export class AdminService {
       data: {
         vendorId,
         title: dto.title,
-        slug: await this.uniqueSlug(dto.title),
+        // A custom slug lets a canonical product (e.g. the book) own a stable URL.
+        slug: await this.uniqueSlug(dto.slug?.trim() || dto.title),
         description: dto.description,
         price: new Prisma.Decimal(dto.price),
         costPrice:
