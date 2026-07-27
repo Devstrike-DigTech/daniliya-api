@@ -1,4 +1,5 @@
 import { ForbiddenException, Injectable } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import {
   BeneficiaryType,
   CommissionStatus,
@@ -7,7 +8,6 @@ import {
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 
-const DOMAIN = 'https://daniliya.com';
 /** Everything not refunded — used for lifetime/leaderboard totals. */
 const EARNED_STATES = [
   CommissionStatus.PENDING,
@@ -24,7 +24,17 @@ const UNPAID_STATES = [
 
 @Injectable()
 export class AffiliateService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly config: ConfigService,
+  ) {}
+
+  /** Storefront origin the referral links point at, per environment. */
+  private webBase(): string {
+    return (
+      this.config.get<string>('WEB_APP_URL') ?? 'http://localhost:3000'
+    ).replace(/\/+$/, '');
+  }
 
   async overview(userId: string) {
     const p = await this.profileOrThrow(userId);
@@ -58,12 +68,13 @@ export class AffiliateService {
       orderBy: { createdAt: 'desc' },
       take: 50,
     });
+    const base = this.webBase();
     return {
-      master: `${DOMAIN}/products?ref=${p.referralCode}`,
+      master: `${base}/shop?ref=${p.referralCode}`,
       products: products.map((pr) => ({
         title: pr.title,
         price: pr.price,
-        link: `${DOMAIN}/products/${pr.slug}?ref=${p.referralCode}`,
+        link: `${base}/shop/${pr.slug}?ref=${p.referralCode}`,
       })),
     };
   }
