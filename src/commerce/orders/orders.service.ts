@@ -42,6 +42,13 @@ type ResolvedItem = {
   quantity: number;
   giftWrap: boolean;
   giftMeta?: Prisma.JsonValue | null;
+  /** The chosen size, or null for single-price products. */
+  variantId: string | null;
+  variantName: string | null;
+  /** Seller's price for what was chosen — the variant's price, or the product's. */
+  basePrice: Prisma.Decimal;
+  /** Stock available for what was chosen (variant stock or product stock). */
+  availableStock: number;
   product: {
     id: string;
     title: string;
@@ -115,6 +122,16 @@ export class OrdersService {
     return product.price.plus(markup).toDecimalPlaces(2);
   }
 
+  /** Charged unit price for a resolved line — markup applied to the chosen
+   *  size's price (or the product's, for single-price items). */
+  private itemUnit(i: ResolvedItem): Prisma.Decimal {
+    return this.effectiveUnitPrice({
+      price: i.basePrice,
+      commissionRate: i.product.commissionRate,
+      commissionMode: i.product.commissionMode,
+    });
+  }
+
   /** Server-side total for the current cart under a fulfilment mode. */
   async quote(userId: string, dto: QuoteDto) {
     const items = await this.loadCartItems(userId);
@@ -122,7 +139,7 @@ export class OrdersService {
 
     const breakdown = this.pricing.quote(
       items.map((i) => ({
-        unitPrice: this.effectiveUnitPrice(i.product),
+        unitPrice: this.itemUnit(i),
         quantity: i.quantity,
         giftWrap: i.giftWrap,
       })),
@@ -136,7 +153,7 @@ export class OrdersService {
     const items = await this.loadGuestItems(dto.items);
     const breakdown = this.pricing.quote(
       items.map((i) => ({
-        unitPrice: this.effectiveUnitPrice(i.product),
+        unitPrice: this.itemUnit(i),
         quantity: i.quantity,
         giftWrap: i.giftWrap,
       })),
@@ -183,16 +200,18 @@ export class OrdersService {
           `"${it.product.title}" is no longer available`,
         );
       }
-      if (it.product.stockQuantity < it.quantity) {
+      if (it.availableStock < it.quantity) {
         throw new BadRequestException(
-          `Not enough stock for "${it.product.title}"`,
+          it.variantName
+            ? `"${it.product.title}" (${it.variantName}) is out of stock`
+            : `Not enough stock for "${it.product.title}"`,
         );
       }
     }
 
     const breakdown = this.pricing.quote(
       items.map((i) => ({
-        unitPrice: this.effectiveUnitPrice(i.product),
+        unitPrice: this.itemUnit(i),
         quantity: i.quantity,
         giftWrap: i.giftWrap,
       })),
@@ -225,13 +244,15 @@ export class OrdersService {
           confirmedAt: isPod ? new Date() : null,
           items: {
             create: items.map((i) => {
-              const unit = this.effectiveUnitPrice(i.product);
+              const unit = this.itemUnit(i);
               return {
                 productId: i.productId,
+                variantId: i.variantId,
+                variantName: i.variantName,
                 titleSnapshot: i.product.title,
                 quantity: i.quantity,
                 unitPrice: unit,
-                baseUnitPrice: i.product.price,
+                baseUnitPrice: i.basePrice,
                 giftWrap: i.giftWrap,
                 giftMeta: i.giftMeta ?? undefined,
                 totalPrice: unit.times(i.quantity),
@@ -250,8 +271,16 @@ export class OrdersService {
         include: { payment: true },
       });
 
-      // Reserve stock immediately so two buyers can't claim the last unit.
+      // Reserve stock immediately so two buyers can't claim the last unit. For
+      // a sized purchase, decrement the size AND the product aggregate (which is
+      // the sum of the sizes) so the "from" price and in-stock flag stay right.
       for (const it of items) {
+        if (it.variantId) {
+          await tx.productVariant.update({
+            where: { id: it.variantId },
+            data: { stockQuantity: { decrement: it.quantity } },
+          });
+        }
         await tx.product.update({
           where: { id: it.productId },
           data: { stockQuantity: { decrement: it.quantity } },
@@ -338,7 +367,7 @@ export class OrdersService {
       where: { ref },
       include: {
         shipment: true,
-        items: { select: { titleSnapshot: true, quantity: true } },
+        items: { select: { titleSnapshot: true, variantName: true, quantity: true } },
       },
     });
     if (!order) throw new NotFoundException('No order with that reference');
@@ -398,7 +427,18 @@ export class OrdersService {
         items: { include: { product: true }, orderBy: { id: 'asc' } },
       },
     });
-    return cart?.items ?? [];
+    // The signed-in server cart is single-price (no sizes) for now.
+    return (cart?.items ?? []).map((it) => ({
+      productId: it.productId,
+      quantity: it.quantity,
+      giftWrap: it.giftWrap,
+      giftMeta: it.giftMeta,
+      variantId: null,
+      variantName: null,
+      basePrice: it.product.price,
+      availableStock: it.product.stockQuantity,
+      product: it.product,
+    }));
   }
 
   /**
@@ -410,6 +450,7 @@ export class OrdersService {
     const ids = [...new Set(lines.map((l) => l.productId))];
     const products = await this.prisma.product.findMany({
       where: { id: { in: ids } },
+      include: { variants: true },
     });
     const byId = new Map(products.map((p) => [p.id, p]));
 
@@ -419,11 +460,37 @@ export class OrdersService {
         throw new BadRequestException(
           'One of the items is no longer available',
         );
+
+      // A sized product must be bought by a specific size; a single-price one
+      // must not carry a size.
+      if (product.variantType) {
+        const variant = product.variants.find((v) => v.id === line.variantId);
+        if (!variant)
+          throw new BadRequestException(
+            `Choose a size for "${product.title}"`,
+          );
+        return {
+          productId: product.id,
+          quantity: line.quantity,
+          giftWrap: line.giftWrap ?? false,
+          giftMeta: null,
+          variantId: variant.id,
+          variantName: variant.name,
+          basePrice: variant.price,
+          availableStock: variant.stockQuantity,
+          product,
+        };
+      }
+
       return {
         productId: product.id,
         quantity: line.quantity,
         giftWrap: line.giftWrap ?? false,
         giftMeta: null,
+        variantId: null,
+        variantName: null,
+        basePrice: product.price,
+        availableStock: product.stockQuantity,
         product,
       };
     });

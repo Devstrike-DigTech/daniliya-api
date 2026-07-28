@@ -1,5 +1,10 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { CommissionMode, Prisma, ProductStatus } from '@prisma/client';
+import {
+  CommissionMode,
+  Prisma,
+  ProductStatus,
+  ProductVariantType,
+} from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 
 /** Customer-facing price: base price plus the ADD_ON commission markup. */
@@ -100,19 +105,35 @@ export class ProductsService {
       where: { slug, status: ProductStatus.ACTIVE },
       include: {
         images: { orderBy: { sortOrder: 'asc' } },
+        variants: { orderBy: { sortOrder: 'asc' } },
         vendor: { select: { businessName: true } },
       },
     });
     if (!product) throw new NotFoundException('Product not found');
+
+    // Sizes carry the same ADD_ON markup as the base product, applied per row.
+    const variants = product.variants.map((v) => ({
+      id: v.id,
+      name: v.name,
+      price: displayPrice({ ...product, price: v.price }),
+      inStock: v.stockQuantity > 0,
+      stockQuantity: v.stockQuantity,
+    }));
+    const inStock = product.variantType
+      ? variants.some((v) => v.inStock)
+      : product.stockQuantity > 0;
 
     return {
       id: product.id,
       slug: product.slug,
       title: product.title,
       description: product.description,
+      // For a sized product this is the lowest size — the "from" price.
       price: displayPrice(product),
+      variantType: product.variantType,
+      variants,
       category: product.category,
-      inStock: product.stockQuantity > 0,
+      inStock,
       stockQuantity: product.stockQuantity,
       vendor: product.vendor?.businessName ?? 'Daniliya',
       images: product.images.map((i) => i.url),
@@ -127,6 +148,7 @@ export class ProductsService {
     price: Prisma.Decimal;
     commissionRate: Prisma.Decimal;
     commissionMode: CommissionMode;
+    variantType: ProductVariantType | null;
     category: string | null;
     stockQuantity: number;
     images: { url: string }[];
@@ -136,7 +158,10 @@ export class ProductsService {
       slug: p.slug,
       title: p.title,
       blurb: p.description,
+      // For a sized product this is the lowest size; `fromPrice` tells the card
+      // to show it as "from ₦X".
       price: displayPrice(p),
+      fromPrice: p.variantType !== null,
       category: p.category,
       inStock: p.stockQuantity > 0,
       image: p.images[0]?.url ?? null,

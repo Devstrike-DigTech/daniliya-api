@@ -88,6 +88,11 @@ export class GuestItemDto {
   @IsUUID()
   productId!: string;
 
+  @ApiPropertyOptional({ description: 'Chosen size; required if the product has sizes.' })
+  @IsOptional()
+  @IsUUID()
+  variantId?: string;
+
   @ApiProperty({ minimum: 1, maximum: 99 })
   @IsInt()
   @Min(1)
