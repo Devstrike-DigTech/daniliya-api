@@ -1,4 +1,8 @@
-import { Injectable, Logger } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { randomUUID } from 'crypto';
 
@@ -31,12 +35,19 @@ export class SmileIdService {
   private readonly logger = new Logger(SmileIdService.name);
   private readonly partnerId?: string;
   private readonly apiKey?: string;
-  private readonly isProd: boolean;
+  /**
+   * When true, a missing provider is a hard error instead of falling back to
+   * manual review. Off by default so a deployment without a KYC provider still
+   * onboards (submissions queue for manual review) rather than 500-ing. Set
+   * KYC_REQUIRE_PROVIDER=true once a real provider is wired to enforce it.
+   */
+  private readonly requireProvider: boolean;
 
   constructor(private readonly config: ConfigService) {
     const partnerId = this.config.get<string>('SMILE_ID_PARTNER_ID');
     const apiKey = this.config.get<string>('SMILE_ID_API_KEY');
-    this.isProd = this.config.get<string>('NODE_ENV') === 'production';
+    this.requireProvider =
+      this.config.get<string>('KYC_REQUIRE_PROVIDER') === 'true';
 
     const usable = (v?: string) =>
       !!v && !v.startsWith('change-me') && v.length > 4;
@@ -56,8 +67,10 @@ export class SmileIdService {
 
   async submit(input: SmileIdSubmission): Promise<SmileIdResult> {
     if (this.isStub) {
-      if (this.isProd) {
-        throw new Error('SMILE_ID credentials are required in production');
+      if (this.requireProvider) {
+        throw new ServiceUnavailableException(
+          'Identity verification is temporarily unavailable. Please try again later.',
+        );
       }
       this.logger.warn(
         `[stub-kyc] submission for user ${input.userId} → manual review`,
