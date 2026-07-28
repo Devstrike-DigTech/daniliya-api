@@ -356,6 +356,11 @@ model KycSubmission {
   status        KycStatus    @default(PENDING)
   govIdType     String?
   govIdUrl      String?
+  /// Smile ID id_type code (NIN, BVN, DRIVERS_LICENSE, …) and last 4 of the
+  /// number — the full number is sent to Smile ID for validation, never stored.
+  idType        String?
+  idNumberLast4 String?
+  dob           String?
   bankAccountId String?
   bankAccount   BankAccount? @relation(fields: [bankAccountId], references: [id])
   ninLast4      String?

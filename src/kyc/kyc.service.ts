@@ -49,8 +49,9 @@ export class KycService {
       userId,
       firstName: user.firstName,
       lastName: user.lastName,
-      govIdType: dto.govIdType,
-      govIdUrl: dto.govIdUrl,
+      idType: dto.idType,
+      idNumber: dto.idNumber,
+      dob: dto.dob,
     });
 
     const status = result.decided
@@ -59,25 +60,29 @@ export class KycService {
         : KycStatus.REJECTED
       : KycStatus.PENDING_MANUAL;
 
+    // Only the last 4 of the ID number are kept — the full number goes to Smile
+    // ID for validation and is never persisted.
+    const idNumberLast4 = dto.idNumber.slice(-4);
+    const kycFields = {
+      status,
+      idType: dto.idType,
+      idNumberLast4,
+      dob: dto.dob ?? null,
+      govIdUrl: dto.govIdUrl ?? null,
+      bankAccountId: bankAccount.id,
+      smileIdRef: result.ref,
+      reason: result.reason,
+    };
+
     const record = await this.prisma.kycSubmission.upsert({
       where: { userId },
       create: {
         userId,
-        status,
-        govIdType: dto.govIdType,
-        govIdUrl: dto.govIdUrl,
-        bankAccountId: bankAccount.id,
-        smileIdRef: result.ref,
-        reason: result.reason,
+        ...kycFields,
         verifiedAt: status === KycStatus.VERIFIED ? new Date() : null,
       },
       update: {
-        status,
-        govIdType: dto.govIdType,
-        govIdUrl: dto.govIdUrl,
-        bankAccountId: bankAccount.id,
-        smileIdRef: result.ref,
-        reason: result.reason,
+        ...kycFields,
         submittedAt: new Date(),
         rejectedAt: null,
         verifiedAt: status === KycStatus.VERIFIED ? new Date() : null,
