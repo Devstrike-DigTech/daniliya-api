@@ -115,6 +115,7 @@ export class AdminOrdersService {
         id: it.id,
         productId: it.productId,
         titleSnapshot: it.titleSnapshot,
+        variantName: it.variantName,
         quantity: it.quantity,
         unitPrice: it.unitPrice,
         totalPrice: it.totalPrice,
