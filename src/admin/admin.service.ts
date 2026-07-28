@@ -10,6 +10,7 @@ import {
   PayoutItemStatus,
   Prisma,
   ProductStatus,
+  ProductVariantType,
 } from '@prisma/client';
 import { randomBytes } from 'crypto';
 import { AuditService } from '../audit/audit.service';
@@ -50,6 +51,7 @@ export class AdminService {
       include: {
         vendor: { select: { id: true, businessName: true, takeRateBps: true } },
         images: { orderBy: { sortOrder: 'asc' } },
+        variants: { orderBy: { sortOrder: 'asc' } },
         _count: { select: { orderItems: true, reviews: true } },
       },
     });
@@ -131,12 +133,11 @@ export class AdminService {
       }
     }
 
+    // Platform products carry no cost basis (profit = revenue − commissions).
+    // Vendor products cost the platform the vendor's net payout (take-rate).
     let cost = zero;
-    if (product.costPrice != null) {
-      cost = new Prisma.Decimal(product.costPrice).times(units);
-    } else if (product.vendorId) {
+    if (product.vendorId) {
       const bps = product.vendor?.takeRateBps ?? 1000;
-      // Vendor's net payout, on the base (pre-markup) take.
       cost = baseRevenue.times(10000 - bps).dividedBy(10000);
     }
 
@@ -152,7 +153,7 @@ export class AdminService {
 
   /** Marketplace-wide product sales + profit for the Products summary cards. */
   async productsFinance() {
-    const [salesAgg, vendorPayout, perkPayout, platformItems] = await Promise.all([
+    const [salesAgg, vendorPayout, perkPayout] = await Promise.all([
       this.prisma.orderItem.aggregate({
         where: { order: { status: { in: this.PAID_STATUSES } } },
         _sum: { totalPrice: true },
@@ -169,27 +170,15 @@ export class AdminService {
         },
         _sum: { amount: true },
       }),
-      // Platform products (no vendor) that carry an explicit cost.
-      this.prisma.orderItem.findMany({
-        where: {
-          order: { status: { in: this.PAID_STATUSES } },
-          product: { vendorId: null, costPrice: { not: null } },
-        },
-        select: { quantity: true, product: { select: { costPrice: true } } },
-      }),
     ]);
 
+    // Platform products carry no cost basis, so marketplace profit is sales less
+    // vendor payouts and perk commissions.
     const zero = new Prisma.Decimal(0);
     const totalSales = salesAgg._sum.totalPrice ?? zero;
-    const platformCost = platformItems.reduce(
-      (s, i) =>
-        s.plus(new Prisma.Decimal(i.product.costPrice ?? 0).times(i.quantity)),
-      zero,
-    );
     const profit = totalSales
       .minus(vendorPayout._sum.amount ?? zero)
-      .minus(perkPayout._sum.amount ?? zero)
-      .minus(platformCost);
+      .minus(perkPayout._sum.amount ?? zero);
 
     return { totalSales: totalSales.toFixed(2), totalProfit: profit.toFixed(2) };
   }
@@ -264,11 +253,54 @@ export class AdminService {
    * Admins have authority to publish straight to ACTIVE, unlike vendors whose
    * products go through review.
    */
+  /**
+   * Turns the size rows into what the DB needs: when a product has sizes, its
+   * price is the lowest size ("from" price), its stock is the sum of the sizes,
+   * and each row becomes a ProductVariant. Single-price products return nulls.
+   */
+  private resolveVariants(dto: {
+    variantType?: ProductVariantType | null;
+    variants?: { name: string; price: number; stockQuantity?: number }[];
+  }): {
+    variantType: ProductVariantType | null;
+    price: Prisma.Decimal | null;
+    stockQuantity: number | null;
+    create:
+      | { name: string; price: Prisma.Decimal; stockQuantity: number; sortOrder: number }[]
+      | null;
+  } {
+    const rows = dto.variants ?? [];
+    if (!dto.variantType || rows.length === 0) {
+      return { variantType: null, price: null, stockQuantity: null, create: null };
+    }
+    const decimals = rows.map((r) => new Prisma.Decimal(r.price));
+    const min = decimals.reduce((a, b) => (a.lessThan(b) ? a : b));
+    const stock = rows.reduce((s, r) => s + (r.stockQuantity ?? 0), 0);
+    return {
+      variantType: dto.variantType,
+      price: min,
+      stockQuantity: stock,
+      create: rows.map((r, i) => ({
+        name: r.name.trim(),
+        price: new Prisma.Decimal(r.price),
+        stockQuantity: r.stockQuantity ?? 0,
+        sortOrder: i,
+      })),
+    };
+  }
+
   async createProduct(dto: AdminCreateProductDto, adminId: string, ip?: string) {
     const vendorId = dto.vendorId || null;
     if (vendorId) await this.vendorOrThrow(vendorId);
 
     const status = dto.publish === false ? ProductStatus.DRAFT : ProductStatus.ACTIVE;
+    if (dto.variantType && !(dto.variants && dto.variants.length > 0)) {
+      throw new BadRequestException('Add at least one size, or clear the size type.');
+    }
+    const v = this.resolveVariants(dto);
+    if (!v.create && dto.price === undefined) {
+      throw new BadRequestException('Set a price, or add sizes with their prices.');
+    }
     const product = await this.prisma.product.create({
       data: {
         vendorId,
@@ -276,21 +308,26 @@ export class AdminService {
         // A custom slug lets a canonical product (e.g. the book) own a stable URL.
         slug: await this.uniqueSlug(dto.slug?.trim() || dto.title),
         description: dto.description,
-        price: new Prisma.Decimal(dto.price),
-        costPrice:
-          dto.costPrice !== undefined ? new Prisma.Decimal(dto.costPrice) : null,
+        // With sizes, the product price is the lowest size (the "from" price)
+        // and stock is the sum of the sizes; otherwise the single price/stock.
+        price: v.price ?? new Prisma.Decimal(dto.price ?? 0),
+        variantType: v.variantType,
         commissionRate: new Prisma.Decimal(dto.commissionRate ?? 0),
         affiliateEligible: dto.affiliateEligible ?? true,
         influencerEligible: dto.influencerEligible ?? true,
         commissionMode: dto.commissionMode ?? undefined,
-        stockQuantity: dto.stockQuantity,
+        stockQuantity: v.stockQuantity ?? dto.stockQuantity ?? 0,
         category: dto.category,
         status,
+        variants: v.create ? { create: v.create } : undefined,
         images: dto.imageUrls?.length
           ? { create: dto.imageUrls.map((url, sortOrder) => ({ url, sortOrder })) }
           : undefined,
       },
-      include: { images: { orderBy: { sortOrder: 'asc' } } },
+      include: {
+        images: { orderBy: { sortOrder: 'asc' } },
+        variants: { orderBy: { sortOrder: 'asc' } },
+      },
     });
 
     await this.audit.record({
@@ -329,9 +366,6 @@ export class AdminService {
       ...(dto.commissionRate !== undefined
         ? { commissionRate: new Prisma.Decimal(dto.commissionRate) }
         : {}),
-      ...(dto.costPrice !== undefined
-        ? { costPrice: new Prisma.Decimal(dto.costPrice) }
-        : {}),
       ...(dto.affiliateEligible !== undefined
         ? { affiliateEligible: dto.affiliateEligible }
         : {}),
@@ -348,7 +382,28 @@ export class AdminService {
       ...(vendorUpdate !== undefined ? { vendorId: vendorUpdate } : {}),
     };
 
+    // Sizes are sent as a full set when present. With sizes, they drive the
+    // product's price (lowest) and stock (sum); clearing them (empty array +
+    // no type) reverts to the single price/stock the form supplies.
+    const v = dto.variants !== undefined ? this.resolveVariants(dto) : null;
+    if (v) {
+      data.variantType = v.variantType;
+      if (v.price !== null) data.price = v.price;
+      if (v.stockQuantity !== null) data.stockQuantity = v.stockQuantity;
+    }
+
     const updated = await this.prisma.product.update({ where: { id }, data });
+
+    // Replacing sizes: drop the old rows (order history keeps its variantName
+    // snapshot; the FK is SET NULL) and recreate from the form.
+    if (dto.variants !== undefined) {
+      await this.prisma.productVariant.deleteMany({ where: { productId: id } });
+      if (v?.create?.length) {
+        await this.prisma.productVariant.createMany({
+          data: v.create.map((row) => ({ ...row, productId: id })),
+        });
+      }
+    }
 
     // Images are replaced wholesale when the field is present — the form always
     // sends the full set it wants kept.

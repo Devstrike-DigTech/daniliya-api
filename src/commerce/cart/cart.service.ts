@@ -78,23 +78,32 @@ export class CartService {
     const giftMeta = dto.giftMessage ? { message: dto.giftMessage } : undefined;
 
     // Adding an existing product increments quantity (idempotent add-to-cart).
-    await this.prisma.cartItem.upsert({
-      where: {
-        cartId_productId: { cartId: cart.id, productId: dto.productId },
-      },
-      create: {
-        cartId: cart.id,
-        productId: dto.productId,
-        quantity: qty,
-        giftWrap: dto.giftWrap ?? false,
-        giftMeta,
-      },
-      update: {
-        quantity: { increment: qty },
-        ...(dto.giftWrap !== undefined ? { giftWrap: dto.giftWrap } : {}),
-        ...(giftMeta ? { giftMeta } : {}),
-      },
+    // The unique key now includes variantId; the server cart is single-price for
+    // now (variantId null), so match on that explicitly — a null can't be used
+    // through the compound-unique upsert (Postgres treats nulls as distinct).
+    const existing = await this.prisma.cartItem.findFirst({
+      where: { cartId: cart.id, productId: dto.productId, variantId: null },
     });
+    if (existing) {
+      await this.prisma.cartItem.update({
+        where: { id: existing.id },
+        data: {
+          quantity: { increment: qty },
+          ...(dto.giftWrap !== undefined ? { giftWrap: dto.giftWrap } : {}),
+          ...(giftMeta ? { giftMeta } : {}),
+        },
+      });
+    } else {
+      await this.prisma.cartItem.create({
+        data: {
+          cartId: cart.id,
+          productId: dto.productId,
+          quantity: qty,
+          giftWrap: dto.giftWrap ?? false,
+          giftMeta,
+        },
+      });
+    }
 
     return this.get(userId);
   }

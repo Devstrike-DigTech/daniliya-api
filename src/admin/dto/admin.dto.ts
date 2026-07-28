@@ -3,6 +3,7 @@ import {
   AdminRole,
   AffiliateTier,
   CommissionMode,
+  ProductVariantType,
   TicketPriority,
 } from '@prisma/client';
 import { Type } from 'class-transformer';
@@ -24,7 +25,30 @@ import {
   MaxLength,
   Min,
   ValidateIf,
+  ValidateNested,
 } from 'class-validator';
+
+/** One buyable size/option row on a product (name + price + optional stock). */
+export class ProductVariantInputDto {
+  @ApiProperty({ description: 'e.g. "XL", "2m x 3m", "500g"' })
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(60)
+  name!: string;
+
+  @ApiProperty()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  price!: number;
+
+  @ApiPropertyOptional({ default: 0 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  stockQuantity?: number;
+}
 
 export class ChangeTierDto {
   @ApiProperty({ enum: AffiliateTier })
@@ -82,17 +106,22 @@ export class AdminCreateProductDto {
   @IsString()
   description?: string;
 
-  @ApiProperty({ description: 'Sale price in naira' })
+  @ApiPropertyOptional({
+    description: 'Sale price in naira. Required for single-price products; ' +
+      'omit when the product has sizes (price is derived from the sizes).',
+  })
+  @IsOptional()
   @Type(() => Number)
   @IsNumber()
   @Min(0)
-  price!: number;
+  price?: number;
 
-  @ApiProperty()
+  @ApiPropertyOptional({ description: 'Omit when the product has sizes.' })
+  @IsOptional()
   @Type(() => Number)
   @IsInt()
   @Min(0)
-  stockQuantity!: number;
+  stockQuantity?: number;
 
   @ApiPropertyOptional()
   @IsOptional()
@@ -113,12 +142,21 @@ export class AdminCreateProductDto {
   @Max(100)
   commissionRate?: number;
 
-  @ApiPropertyOptional({ description: 'Cost / vendor price — the platform cost basis' })
+  @ApiPropertyOptional({
+    enum: ProductVariantType,
+    description: 'Set when the product has sizes; null/omit for single-price',
+  })
   @IsOptional()
-  @Type(() => Number)
-  @IsNumber()
-  @Min(0)
-  costPrice?: number;
+  @IsEnum(ProductVariantType)
+  variantType?: ProductVariantType | null;
+
+  @ApiPropertyOptional({ type: [ProductVariantInputDto] })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(30)
+  @ValidateNested({ each: true })
+  @Type(() => ProductVariantInputDto)
+  variants?: ProductVariantInputDto[];
 
   @ApiPropertyOptional({ default: true })
   @IsOptional()
@@ -191,12 +229,19 @@ export class AdminUpdateProductDto {
   @Max(100)
   commissionRate?: number;
 
-  @ApiPropertyOptional({ description: 'Cost / vendor price — the platform cost basis' })
+  @ApiPropertyOptional({ enum: ProductVariantType, nullable: true })
   @IsOptional()
-  @Type(() => Number)
-  @IsNumber()
-  @Min(0)
-  costPrice?: number;
+  @ValidateIf((_, v) => v !== null)
+  @IsEnum(ProductVariantType)
+  variantType?: ProductVariantType | null;
+
+  @ApiPropertyOptional({ type: [ProductVariantInputDto] })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(30)
+  @ValidateNested({ each: true })
+  @Type(() => ProductVariantInputDto)
+  variants?: ProductVariantInputDto[];
 
   @ApiPropertyOptional()
   @IsOptional()
