@@ -180,6 +180,28 @@ export class AdminPeopleService {
             email: true,
             phone: true,
             status: true,
+            bankAccounts: {
+              orderBy: { isDefault: 'desc' },
+              select: {
+                id: true,
+                bankName: true,
+                accountNumber: true,
+                accountName: true,
+                isDefault: true,
+                verified: true,
+              },
+            },
+            kycSubmission: {
+              select: {
+                status: true,
+                idType: true,
+                idNumberLast4: true,
+                dob: true,
+                submittedAt: true,
+                verifiedAt: true,
+                reason: true,
+              },
+            },
           },
         },
       },
