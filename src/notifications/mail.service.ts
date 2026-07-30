@@ -108,6 +108,39 @@ export class MailService {
     });
   }
 
+  /** Sent to an affiliate when a sale is made through their referral link. */
+  async sendAffiliateSale(
+    to: string,
+    opts: { ref: string; amount: string; units: number },
+  ): Promise<void> {
+    const amount = this.naira(opts.amount);
+    const intro = `Great news — someone just bought through your referral link, so you've earned a commission. 🎉`;
+    const bodyHtml =
+      `<div style="margin:8px 0 4px;padding:18px;text-align:center;background:${emailPalette.CREAM};border:1px solid ${emailPalette.BORDER};border-radius:12px">
+        <p style="margin:0 0 4px;font-size:13px;color:${emailPalette.MUTED}">Commission earned</p>
+        <p style="margin:0;font-size:30px;font-weight:800;color:${emailPalette.INK}">${esc(amount)}</p>
+      </div>` +
+      detailRows([
+        ['Order', opts.ref],
+        ['Items sold', `${opts.units}`],
+        ['Your commission', amount],
+      ]);
+    await this.send({
+      to,
+      subject: `You earned ${amount} — a sale came through your link`,
+      html: this.branded({
+        preheader: `You earned ${amount} in affiliate commission`,
+        heading: 'You made a sale! 🎉',
+        intro,
+        bodyHtml,
+        footnote:
+          'Commissions are confirmed once the order clears and paid out in the weekly run. ' +
+          'Track everything from Earnings in your affiliate dashboard.',
+      }),
+      devPreview: `Affiliate sale to ${to} — ${amount} on ${opts.ref}`,
+    });
+  }
+
   /** A large, monospaced panel for a one-time code or reset token. */
   private codePanel(value: string): string {
     return `<div style="margin:8px 0 4px;padding:18px;text-align:center;background:${emailPalette.CREAM};border:1px solid ${emailPalette.BORDER};border-radius:12px">

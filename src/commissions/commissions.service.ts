@@ -9,6 +9,7 @@ import {
 } from '@prisma/client';
 import { PlatformConfigService } from '../config/platform-config.service';
 import { LedgerService } from '../ledger/ledger.service';
+import { MailService } from '../notifications/mail.service';
 import { PrismaService } from '../prisma/prisma.service';
 
 /**
@@ -28,6 +29,7 @@ export class CommissionsService {
     private readonly prisma: PrismaService,
     private readonly ledger: LedgerService,
     private readonly config: PlatformConfigService,
+    private readonly mail: MailService,
   ) {}
 
   async accrueForOrder(orderId: string): Promise<void> {
@@ -105,6 +107,16 @@ export class CommissionsService {
     if (units === 0) return;
 
     const commission = this.config.getDecimal('AFFILIATE_COMMISSION').times(units);
+
+    // Only e-mail on a genuinely new commission — accrual can re-run for the same
+    // order (e.g. POD confirm then a webhook) and the upsert is a no-op then.
+    const already = await this.prisma.commissionRecord.findUnique({
+      where: {
+        orderId_beneficiaryId: { orderId: order.id, beneficiaryId: affiliate.userId },
+      },
+      select: { id: true },
+    });
+
     await this.upsertCommission(
       order.id,
       affiliate.userId,
@@ -114,6 +126,38 @@ export class CommissionsService {
     this.logger.log(
       `Affiliate commission accrued for order ${order.id} (${units} unit(s))`,
     );
+
+    if (!already) await this.notifyAffiliateSale(affiliate.userId, order.id, commission, units);
+  }
+
+  /** Tell the affiliate a sale came through their link. Never blocks accrual. */
+  private async notifyAffiliateSale(
+    userId: string,
+    orderId: string,
+    amount: Prisma.Decimal,
+    units: number,
+  ) {
+    try {
+      const [user, order] = await Promise.all([
+        this.prisma.user.findUnique({ where: { id: userId }, select: { email: true } }),
+        this.prisma.order.findUnique({ where: { id: orderId }, select: { ref: true } }),
+      ]);
+      if (user?.email && order) {
+        await this.mail.sendAffiliateSale(user.email, {
+          ref: order.ref,
+          amount: amount.toString(),
+          units,
+        });
+        this.logger.log(
+          `Affiliate sale email sent to ${user.email} for order ${order.ref}`,
+        );
+      }
+    } catch (err) {
+      this.logger.error(
+        `Failed to email affiliate ${userId} about a sale`,
+        err instanceof Error ? err.stack : String(err),
+      );
+    }
   }
 
   private async accrueInfluencer(order: {
