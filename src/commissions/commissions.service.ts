@@ -95,20 +95,25 @@ export class CommissionsService {
     });
     if (!affiliate || !affiliate.isActive) return;
 
-    // Only pay the referral when the order carries a product opted into the
-    // affiliate programme.
-    const eligible = await this.prisma.orderItem.count({
+    // Pay the flat fee per eligible unit sold: a referral order for 3 books
+    // earns 3 × the fee. Only products opted into the affiliate programme count.
+    const eligibleItems = await this.prisma.orderItem.findMany({
       where: { orderId: order.id, product: { affiliateEligible: true } },
+      select: { quantity: true },
     });
-    if (eligible === 0) return;
+    const units = eligibleItems.reduce((sum, i) => sum + i.quantity, 0);
+    if (units === 0) return;
 
+    const commission = this.config.getDecimal('AFFILIATE_COMMISSION').times(units);
     await this.upsertCommission(
       order.id,
       affiliate.userId,
       BeneficiaryType.AFFILIATE,
-      this.config.getDecimal('AFFILIATE_COMMISSION'),
+      commission,
     );
-    this.logger.log(`Affiliate commission accrued for order ${order.id}`);
+    this.logger.log(
+      `Affiliate commission accrued for order ${order.id} (${units} unit(s))`,
+    );
   }
 
   private async accrueInfluencer(order: {
