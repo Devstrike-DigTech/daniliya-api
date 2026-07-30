@@ -63,8 +63,10 @@ export class SmileIdService {
     this.requireProvider =
       this.config.get<string>('KYC_REQUIRE_PROVIDER') === 'true';
 
+    // Only reject empty/placeholder values. Note Smile ID partner IDs are just
+    // 4 digits, so there is no minimum-length guard beyond non-empty.
     const usable = (v?: string) =>
-      !!v && !v.startsWith('change-me') && v.length > 4;
+      !!v && !v.startsWith('change-me') && v.trim().length > 0;
     this.partnerId = usable(partnerId) ? partnerId : undefined;
     this.apiKey = usable(apiKey) ? apiKey : undefined;
 

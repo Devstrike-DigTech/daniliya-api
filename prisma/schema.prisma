@@ -360,6 +360,8 @@ model KycSubmission {
   /// number — the full number is sent to Smile ID for validation, never stored.
   idType        String?
   idNumberLast4 String?
+  /// Full ID number, AES-encrypted — decrypted only for admin manual review.
+  idNumberEnc   String?
   dob           String?
   bankAccountId String?
   bankAccount   BankAccount? @relation(fields: [bankAccountId], references: [id])

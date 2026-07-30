@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { KycStatus } from '@prisma/client';
 import { AuditService } from '../audit/audit.service';
+import { EncryptionService } from '../common/encryption.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { SubmitKycDto } from './dto/kyc.dto';
 import { SmileIdService } from './smile-id.service';
@@ -18,6 +19,7 @@ export class KycService {
     private readonly prisma: PrismaService,
     private readonly smileId: SmileIdService,
     private readonly audit: AuditService,
+    private readonly encryption: EncryptionService,
   ) {}
 
   async submit(userId: string, dto: SubmitKycDto, ip?: string) {
@@ -60,13 +62,15 @@ export class KycService {
         : KycStatus.REJECTED
       : KycStatus.PENDING_MANUAL;
 
-    // Only the last 4 of the ID number are kept — the full number goes to Smile
-    // ID for validation and is never persisted.
+    // Keep the last 4 in the clear for at-a-glance displays, and the full
+    // number AES-encrypted so an admin can read it for manual review without it
+    // sitting in the DB as plaintext.
     const idNumberLast4 = dto.idNumber.slice(-4);
     const kycFields = {
       status,
       idType: dto.idType,
       idNumberLast4,
+      idNumberEnc: this.encryption.encrypt(dto.idNumber),
       dob: dto.dob ?? null,
       govIdUrl: dto.govIdUrl ?? null,
       bankAccountId: bankAccount.id,
@@ -167,8 +171,8 @@ export class KycService {
     return this.present(updated);
   }
 
-  listForReview(status?: KycStatus) {
-    return this.prisma.kycSubmission.findMany({
+  async listForReview(status?: KycStatus) {
+    const rows = await this.prisma.kycSubmission.findMany({
       where: {
         status: status ?? {
           in: [KycStatus.SUBMITTED, KycStatus.PENDING_MANUAL],
@@ -188,6 +192,13 @@ export class KycService {
         bankAccount: { select: { bankName: true, accountName: true } },
       },
     });
+
+    // The full ID number is decrypted here so the admin can manually verify it;
+    // it is exposed only on this admin-guarded review endpoint.
+    return rows.map(({ idNumberEnc, ...row }) => ({
+      ...row,
+      idNumber: this.encryption.decrypt(idNumberEnc),
+    }));
   }
 
   /** True only when identity is verified — the gate every payout checks. */
