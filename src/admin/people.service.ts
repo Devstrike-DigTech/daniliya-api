@@ -5,7 +5,10 @@ import {
 } from '@nestjs/common';
 import {
   AffiliateTier,
+  BeneficiaryType,
+  CommissionStatus,
   OrderStatus,
+  Prisma,
   UserRole,
   UserStatus,
 } from '@prisma/client';
@@ -207,7 +210,74 @@ export class AdminPeopleService {
       },
     });
     if (!p) throw new NotFoundException('Affiliate not found');
-    return p;
+
+    // Earnings/conversions come from the commission ledger, mirroring the
+    // affiliate's own /affiliate/overview. Clicks aren't tracked anywhere yet.
+    const EARNED = [
+      CommissionStatus.PENDING,
+      CommissionStatus.CONFIRMED,
+      CommissionStatus.QUEUED,
+      CommissionStatus.DISBURSED,
+    ];
+    const UNPAID = [
+      CommissionStatus.PENDING,
+      CommissionStatus.CONFIRMED,
+      CommissionStatus.QUEUED,
+    ];
+    const affiliateWhere = {
+      beneficiaryId: p.userId,
+      beneficiaryType: BeneficiaryType.AFFILIATE,
+    };
+
+    const [lifetime, pending, conversions, orders] = await Promise.all([
+      this.prisma.commissionRecord.aggregate({
+        where: { ...affiliateWhere, status: { in: EARNED } },
+        _sum: { amount: true },
+      }),
+      this.prisma.commissionRecord.aggregate({
+        where: { ...affiliateWhere, status: { in: UNPAID } },
+        _sum: { amount: true },
+      }),
+      this.prisma.commissionRecord.count({
+        where: { ...affiliateWhere, status: { not: CommissionStatus.VOIDED } },
+      }),
+      p.referralCode
+        ? this.prisma.order.findMany({
+            where: {
+              affiliateCode: p.referralCode,
+              status: { in: PAID_STATUSES },
+            },
+            select: { items: { select: { titleSnapshot: true, quantity: true, totalPrice: true } } },
+          })
+        : Promise.resolve([]),
+    ]);
+
+    // Roll the attributed orders up to a per-product summary.
+    const byProduct = new Map<string, { title: string; units: number; revenue: Prisma.Decimal }>();
+    for (const o of orders) {
+      for (const it of o.items) {
+        const row = byProduct.get(it.titleSnapshot) ?? {
+          title: it.titleSnapshot,
+          units: 0,
+          revenue: new Prisma.Decimal(0),
+        };
+        row.units += it.quantity;
+        row.revenue = row.revenue.plus(it.totalPrice);
+        byProduct.set(it.titleSnapshot, row);
+      }
+    }
+    const zero = new Prisma.Decimal(0);
+    return {
+      ...p,
+      metrics: {
+        lifetimeEarnings: (lifetime._sum.amount ?? zero).toFixed(2),
+        pending: (pending._sum.amount ?? zero).toFixed(2),
+        conversions,
+      },
+      products: [...byProduct.values()]
+        .sort((a, b) => b.units - a.units)
+        .map((r) => ({ title: r.title, units: r.units, revenue: r.revenue.toFixed(2) })),
+    };
   }
 
   async changeTier(

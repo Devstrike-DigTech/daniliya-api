@@ -206,6 +206,50 @@ export class PayoutsService {
     return { confirmedCommissions: confirmed, batches };
   }
 
+  /**
+   * Commissions that are owed but not yet in a batch — PENDING (awaiting order
+   * confirmation) or CONFIRMED (ready for the next run). This is what "Run
+   * payouts" will sweep up, so the admin can see freshly-earned commissions
+   * before a batch exists for them.
+   */
+  async pendingSummary() {
+    const grouped = await this.prisma.commissionRecord.groupBy({
+      by: ['beneficiaryType', 'status'],
+      where: {
+        payoutItemId: null,
+        status: { in: [CommissionStatus.PENDING, CommissionStatus.CONFIRMED] },
+      },
+      _sum: { amount: true },
+      _count: { _all: true },
+    });
+
+    const zero = new Prisma.Decimal(0);
+    let total = zero;
+    let count = 0;
+    let readyTotal = zero; // CONFIRMED — sweepable on the next run
+    const byAudience: Record<string, { amount: string; count: number }> = {};
+
+    for (const g of grouped) {
+      const amt = g._sum.amount ?? zero;
+      total = total.plus(amt);
+      count += g._count._all;
+      if (g.status === CommissionStatus.CONFIRMED) readyTotal = readyTotal.plus(amt);
+      const key = g.beneficiaryType;
+      const row = byAudience[key] ?? { amount: '0', count: 0 };
+      byAudience[key] = {
+        amount: new Prisma.Decimal(row.amount).plus(amt).toFixed(2),
+        count: row.count + g._count._all,
+      };
+    }
+
+    return {
+      total: total.toFixed(2),
+      readyTotal: readyTotal.toFixed(2),
+      count,
+      byAudience,
+    };
+  }
+
   async list(audience?: PayoutAudience, status?: PayoutBatchStatus) {
     const rows = await this.prisma.payoutBatch.findMany({
       where: {

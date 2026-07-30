@@ -46,6 +46,12 @@ export class AdminPayoutsController {
     return this.payouts.list(audience, status);
   }
 
+  @Get('pending')
+  @ApiOperation({ summary: 'Commissions owed but not yet batched' })
+  pending() {
+    return this.payouts.pendingSummary();
+  }
+
   @Get('reconciliation')
   @ApiOperation({ summary: 'Ledger reconciliation (drift check)' })
   reconcile() {

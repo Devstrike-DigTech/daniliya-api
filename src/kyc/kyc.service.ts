@@ -93,6 +93,17 @@ export class KycService {
       },
     });
 
+    // Keep the affiliate profile's denormalised KYC flag in step with the
+    // submission (the admin list reads it), so a Smile-auto-decision shows.
+    await this.prisma.affiliateProfile.updateMany({
+      where: { userId },
+      data: {
+        kycStatus: status,
+        kycVerifiedAt: status === KycStatus.VERIFIED ? new Date() : null,
+        kycRejectedReason: status === KycStatus.REJECTED ? result.reason ?? null : null,
+      },
+    });
+
     await this.audit.record({
       actorId: userId,
       action: 'Submitted KYC',
