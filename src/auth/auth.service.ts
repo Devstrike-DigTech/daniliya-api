@@ -176,7 +176,7 @@ export class AuthService {
       );
     }
 
-    await this.sendOtp(user);
+    await this.sendOtp(user, { critical: true });
     return { message: 'A new code has been sent.' };
   }
 
@@ -289,7 +289,7 @@ export class AuthService {
 
   // ── Internals ─────────────────────────────────────────────────────────
 
-  private async sendOtp(user: User) {
+  private async sendOtp(user: User, opts: { critical?: boolean } = {}) {
     const code = randomInt(0, 1_000_000).toString().padStart(6, '0');
     await this.redis.set(this.otpKey(user.id), code, OTP_TTL_SECONDS);
     await this.redis.set(
@@ -297,7 +297,23 @@ export class AuthService {
       '1',
       OTP_RESEND_COOLDOWN_SECONDS,
     );
-    if (user.email) await this.mail.sendOtp(user.email, code);
+    if (!user.email) return;
+
+    // The code is already persisted, so a mail-delivery failure need not sink the
+    // whole call. On registration (`critical: false`) we swallow it: the account
+    // exists and the verify screen's "resend" can retry once mail is healthy —
+    // far better than a 500 that also orphans the just-created, un-recreatable
+    // account. An explicit resend (`critical: true`) rethrows so the user is told
+    // the code could not be sent.
+    try {
+      await this.mail.sendOtp(user.email, code);
+    } catch (err) {
+      this.logger.error(
+        `Failed to send OTP email to ${user.email}`,
+        err instanceof Error ? err.stack : String(err),
+      );
+      if (opts.critical) throw err;
+    }
   }
 
   private async issueFor(user: User) {
