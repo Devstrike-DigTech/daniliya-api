@@ -530,6 +530,7 @@ model Product {
   orderItems      OrderItem[]
   commissionRules CommissionRule[]
   reviews         Review[]
+  resources       AffiliateResource[]
 
   @@map("products")
 }
@@ -958,6 +959,48 @@ model AssessmentAnswer {
   isCorrect  Boolean
 
   @@map("assessment_answers")
+}
+
+// ─── Affiliate marketing resources ────────────────────────────────────────────
+
+/// What kind of marketing asset a resource is. Drives which fields are used and
+/// how the affiliate portal renders it (download / copy / play).
+enum ResourceType {
+  CREATIVE // a downloadable image or PDF (fileUrl)
+  SCRIPT // ready-to-send copy the affiliate pastes (body)
+  VIDEO // an external training-video link (videoUrl)
+}
+
+/// A marketing asset affiliates can use to promote products. `productId` null =
+/// a global resource that applies to every product; otherwise it is scoped to
+/// one product. Only the fields relevant to `type` are populated.
+model AffiliateResource {
+  id          String       @id @default(uuid())
+  type        ResourceType
+  title       String
+  description String?
+  // null → global (shown for all products); set → scoped to this product.
+  productId   String?
+  product     Product?     @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  // CREATIVE
+  fileUrl     String?
+  fileFormat  String? // e.g. "PNG", "PDF"
+  fileMeta    String? // e.g. "1080×1920" or "480KB"
+
+  // SCRIPT
+  body        String?
+
+  // VIDEO
+  videoUrl    String?
+  duration    String? // e.g. "6:42"
+
+  isPublished Boolean  @default(true)
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+
+  @@index([productId])
+  @@map("affiliate_resources")
 }
 
 // ─── Tracking & Audit ─────────────────────────────────────────────────────────

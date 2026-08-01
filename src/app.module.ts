@@ -31,6 +31,7 @@ import { UploadsModule } from './uploads/uploads.module';
 import { InfluencerModule } from './influencer/influencer.module';
 import { PayoutsModule } from './payouts/payouts.module';
 import { AdminModule } from './admin/admin.module';
+import { ResourcesModule } from './resources/resources.module';
 import { WebhooksModule } from './webhooks/webhooks.module';
 import { TrackingModule } from './tracking/tracking.module';
 
@@ -64,6 +65,7 @@ import { TrackingModule } from './tracking/tracking.module';
     InfluencerModule,
     PayoutsModule,
     AdminModule,
+    ResourcesModule,
     WebhooksModule,
     TrackingModule,
   ],

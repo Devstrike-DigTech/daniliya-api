@@ -14,6 +14,7 @@ export const UPLOAD_PURPOSES = [
   'product',
   'booking',
   'campaign',
+  'resource',
 ] as const;
 export type UploadPurpose = (typeof UPLOAD_PURPOSES)[number];
 
@@ -41,6 +42,12 @@ const RULES: Record<
     subfolder: 'campaigns',
     mimes: IMAGES,
     maxBytes: 5 * 1024 * 1024,
+  },
+  // Affiliate marketing creatives — banners, carousels, 1-pagers.
+  resource: {
+    subfolder: 'resources',
+    mimes: DOCS,
+    maxBytes: 10 * 1024 * 1024,
   },
 };
 
