@@ -532,8 +532,29 @@ export class PayoutsService {
         orderBy: { createdAt: 'desc' },
       }),
     ]);
+
+    // Roll-ups over settled payouts only (PAID) — powers the Lifetime / count /
+    // average cards. Everything here is derived from real ledger history, not
+    // invented, so an affiliate with no payouts sees zeroes rather than mocks.
+    const paid = items.filter((i) => i.status === PayoutItemStatus.PAID);
+    const lifetimePaid = paid.reduce(
+      (sum, i) => sum.plus(i.amount),
+      new Prisma.Decimal(0),
+    );
+    const payoutsToDate = paid.length;
+    const avgPayout =
+      payoutsToDate > 0
+        ? lifetimePaid.dividedBy(payoutsToDate)
+        : new Prisma.Decimal(0);
+
     return {
+      // Confirmed commissions sitting in the wallet — what the next batch pays.
       walletBalance: balance,
+      minPayout: this.config.getDecimal('MIN_PAYOUT'),
+      nextPayoutDate: this.nextMonday(),
+      lifetimePaid,
+      payoutsToDate,
+      avgPayout,
       history: items.map((i) => ({
         batch: i.batch.ref,
         amount: i.amount,
