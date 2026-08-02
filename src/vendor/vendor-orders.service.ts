@@ -38,7 +38,15 @@ export class VendorOrdersService {
       include: {
         shipment: true,
         items: {
-          include: { product: { select: { vendorId: true, slug: true } } },
+          include: {
+            product: {
+              select: {
+                vendorId: true,
+                slug: true,
+                images: { orderBy: { sortOrder: 'asc' }, take: 1, select: { url: true } },
+              },
+            },
+          },
         },
       },
       orderBy: { createdAt: 'desc' },
@@ -53,8 +61,17 @@ export class VendorOrdersService {
       where: { ref },
       include: {
         shipment: true,
+        payment: true,
         items: {
-          include: { product: { select: { vendorId: true, slug: true } } },
+          include: {
+            product: {
+              select: {
+                vendorId: true,
+                slug: true,
+                images: { orderBy: { sortOrder: 'asc' }, take: 1, select: { url: true } },
+              },
+            },
+          },
         },
       },
     });
@@ -68,6 +85,14 @@ export class VendorOrdersService {
       deliveryAddress: order.deliveryAddress,
       contact: order.contact,
       notes: order.notes,
+      // Lets the vendor confirm the money has cleared before they ship.
+      payment: order.payment
+        ? {
+            method: order.payment.method,
+            status: order.payment.status,
+            reference: order.payment.providerRef,
+          }
+        : null,
     };
   }
 
@@ -129,7 +154,15 @@ export class VendorOrdersService {
         include: {
           shipment: true,
           items: {
-            include: { product: { select: { vendorId: true, slug: true } } },
+            include: {
+            product: {
+              select: {
+                vendorId: true,
+                slug: true,
+                images: { orderBy: { sortOrder: 'asc' }, take: 1, select: { url: true } },
+              },
+            },
+          },
           },
         },
       }),
@@ -161,7 +194,11 @@ export class VendorOrdersService {
         quantity: number;
         unitPrice: Prisma.Decimal;
         totalPrice: Prisma.Decimal;
-        product: { vendorId: string | null; slug: string } | null;
+        product: {
+          vendorId: string | null;
+          slug: string;
+          images?: { url: string }[];
+        } | null;
       }[];
     },
     vendorId: string,
@@ -188,6 +225,7 @@ export class VendorOrdersService {
       items: mine.map((i) => ({
         title: i.titleSnapshot,
         slug: i.product?.slug ?? null,
+        image: i.product?.images?.[0]?.url ?? null,
         quantity: i.quantity,
         unitPrice: i.unitPrice,
         lineTotal: i.totalPrice,
