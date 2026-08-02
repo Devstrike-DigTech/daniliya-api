@@ -7,6 +7,7 @@ import {
   ReviewStatus,
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { UpdateVendorProfileDto } from './dto/vendor.dto';
 
 /** Orders that are paid for but not yet despatched — the vendor's to-do list. */
 const AWAITING_DESPATCH: OrderStatus[] = [
@@ -214,6 +215,10 @@ export class VendorOverviewService {
 
     return {
       businessName: vendor.businessName,
+      productCategory: vendor.productCategory,
+      city: vendor.city,
+      website: vendor.website,
+      address: vendor.address,
       isApproved: vendor.isApproved,
       /** Platform commission in basis points — 1000 = 10%. */
       takeRateBps: vendor.takeRateBps,
@@ -290,5 +295,42 @@ export class VendorOverviewService {
       responseAt: r.responseAt,
       createdAt: r.createdAt,
     }));
+  }
+
+  /** Vendor self-service profile edit — updates the user's contact fields and
+   *  their business details in one call. Only provided fields change. */
+  async updateProfile(userId: string, dto: UpdateVendorProfileDto) {
+    const vendor = await this.prisma.vendorProfile.findUnique({
+      where: { userId },
+    });
+    if (!vendor) throw new ForbiddenException('Not a vendor');
+
+    const userData = {
+      ...(dto.firstName !== undefined ? { firstName: dto.firstName.trim() } : {}),
+      ...(dto.lastName !== undefined ? { lastName: dto.lastName.trim() } : {}),
+      ...(dto.phone !== undefined ? { phone: dto.phone.trim() || null } : {}),
+    };
+    const vendorData = {
+      ...(dto.businessName !== undefined && dto.businessName.trim()
+        ? { businessName: dto.businessName.trim() }
+        : {}),
+      ...(dto.productCategory !== undefined
+        ? { productCategory: dto.productCategory.trim() || null }
+        : {}),
+      ...(dto.city !== undefined ? { city: dto.city.trim() || null } : {}),
+      ...(dto.website !== undefined ? { website: dto.website.trim() || null } : {}),
+      ...(dto.address !== undefined ? { address: dto.address.trim() || null } : {}),
+    };
+
+    await this.prisma.$transaction([
+      ...(Object.keys(userData).length
+        ? [this.prisma.user.update({ where: { id: userId }, data: userData })]
+        : []),
+      ...(Object.keys(vendorData).length
+        ? [this.prisma.vendorProfile.update({ where: { userId }, data: vendorData })]
+        : []),
+    ]);
+
+    return { updated: true };
   }
 }

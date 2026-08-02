@@ -5,12 +5,13 @@ import {
   HttpCode,
   HttpStatus,
   Param,
+  Patch,
   Post,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Role, Roles } from '../common/decorators/roles.decorator';
-import { MarkShippedDto } from './dto/vendor.dto';
+import { MarkShippedDto, UpdateVendorProfileDto } from './dto/vendor.dto';
 import { VendorOrdersService } from './vendor-orders.service';
 import { VendorOverviewService } from './vendor-overview.service';
 
@@ -61,5 +62,14 @@ export class VendorController {
   @ApiOperation({ summary: "Reviews left on this vendor's products" })
   reviews(@CurrentUser('id') userId: string) {
     return this.overviewService.reviews(userId);
+  }
+
+  @Patch('profile')
+  @ApiOperation({ summary: 'Update contact + business details' })
+  updateProfile(
+    @CurrentUser('id') userId: string,
+    @Body() dto: UpdateVendorProfileDto,
+  ) {
+    return this.overviewService.updateProfile(userId, dto);
   }
 }

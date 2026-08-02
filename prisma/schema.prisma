@@ -328,6 +328,9 @@ model VendorProfile {
   user            User     @relation(fields: [userId], references: [id])
   businessName    String
   productCategory String?
+  city            String?
+  website         String?
+  address         String?
   bankDetailsJson String?
   /// Platform take-rate in basis points (1000 = 10%). Vendor net = subtotal × (1 − rate).
   takeRateBps     Int      @default(1000)
