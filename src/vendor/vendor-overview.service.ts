@@ -130,6 +130,8 @@ export class VendorOverviewService {
           select: {
             quantity: true,
             productId: true,
+            baseUnitPrice: true,
+            unitPrice: true,
             product: {
               select: {
                 title: true,
@@ -179,6 +181,16 @@ export class VendorOverviewService {
         ordersPrev7.add(it.orderId);
       }
     }
+
+    // Platform commission taken from this vendor over the last 30 days — the
+    // take-rate applied to each line's base value. Powers the "Commission (30d)"
+    // card on the payouts screen.
+    const takeRate = new Prisma.Decimal(vendor.takeRateBps).dividedBy(10000);
+    const commission30d = items30.reduce(
+      (acc, i) =>
+        acc.plus((i.baseUnitPrice ?? i.unitPrice).times(i.quantity).times(takeRate)),
+      new Prisma.Decimal(0),
+    );
 
     // Top sellers over 30 days: units sold per product, richest first.
     const sellers = new Map<
@@ -238,6 +250,8 @@ export class VendorOverviewService {
       weeklyRevenue: series.map((s) => ({ label: s.label, amount: s.amount })),
       /** Best-selling products by units over the last 30 days. */
       topSellers,
+      /** Platform commission taken from this vendor over the last 30 days. */
+      commission30d,
     };
   }
 
@@ -251,7 +265,13 @@ export class VendorOverviewService {
     const rows = await this.prisma.review.findMany({
       where: { vendorId: vendor.id, status: { not: ReviewStatus.REMOVED } },
       include: {
-        product: { select: { title: true, slug: true } },
+        product: {
+          select: {
+            title: true,
+            slug: true,
+            images: { orderBy: { sortOrder: 'asc' }, take: 1, select: { url: true } },
+          },
+        },
         author: { select: { firstName: true } },
       },
       orderBy: { createdAt: 'desc' },
@@ -264,7 +284,7 @@ export class VendorOverviewService {
       status: r.status,
       authorName: r.author.firstName,
       product: r.product
-        ? { title: r.product.title, slug: r.product.slug }
+        ? { title: r.product.title, slug: r.product.slug, image: r.product.images[0]?.url ?? null }
         : null,
       responseBody: r.responseBody,
       responseAt: r.responseAt,
