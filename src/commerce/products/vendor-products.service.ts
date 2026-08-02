@@ -4,7 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { Prisma, ProductStatus } from '@prisma/client';
+import { OrderStatus, Prisma, ProductStatus, ReviewStatus } from '@prisma/client';
 import { randomBytes } from 'crypto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateProductDto, UpdateProductDto } from './dto/vendor-product.dto';
@@ -20,7 +20,48 @@ export class VendorProductsService {
       include: { images: { orderBy: { sortOrder: 'asc' } } },
       orderBy: { createdAt: 'desc' },
     });
-    return rows.map((p) => this.present(p));
+
+    // Real per-product units-sold and rating for the list columns — units from
+    // standing orders, rating from published reviews. Both default to zero/null
+    // so a brand-new product reads honestly rather than with invented figures.
+    const ids = rows.map((r) => r.id);
+    const [sold, rated] = await Promise.all([
+      this.prisma.orderItem.groupBy({
+        by: ['productId'],
+        where: {
+          productId: { in: ids },
+          order: {
+            status: {
+              notIn: [
+                OrderStatus.PENDING,
+                OrderStatus.CANCELLED,
+                OrderStatus.REFUNDED,
+              ],
+            },
+          },
+        },
+        _sum: { quantity: true },
+      }),
+      this.prisma.review.groupBy({
+        by: ['productId'],
+        where: { productId: { in: ids }, status: ReviewStatus.PUBLISHED },
+        _avg: { rating: true },
+        _count: { _all: true },
+      }),
+    ]);
+    const soldMap = new Map(sold.map((s) => [s.productId, s._sum.quantity ?? 0]));
+    const ratingMap = new Map(
+      rated.map((r) => [
+        r.productId,
+        { average: r._avg.rating, count: r._count._all },
+      ]),
+    );
+
+    return rows.map((p) => ({
+      ...this.present(p),
+      unitsSold: soldMap.get(p.id) ?? 0,
+      rating: ratingMap.get(p.id) ?? { average: null, count: 0 },
+    }));
   }
 
   async create(userId: string, dto: CreateProductDto) {
