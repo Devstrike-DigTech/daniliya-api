@@ -4,7 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { OrderStatus, Prisma } from '@prisma/client';
+import { OrderChannel, OrderStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { MarkShippedDto } from './dto/vendor.dto';
 
@@ -144,6 +144,7 @@ export class VendorOrdersService {
     order: {
       ref: string;
       status: OrderStatus;
+      channel: OrderChannel;
       fulfilmentMode: string;
       createdAt: Date;
       confirmedAt: Date | null;
@@ -175,6 +176,8 @@ export class VendorOrdersService {
     return {
       ref: order.ref,
       status: order.status,
+      /** WEB / AFFILIATE / INFLUENCER — how the sale was attributed. */
+      channel: order.channel,
       fulfilmentMode: order.fulfilmentMode,
       placedAt: order.createdAt,
       confirmedAt: order.confirmedAt,
