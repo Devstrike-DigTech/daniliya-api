@@ -14,6 +14,34 @@ const AWAITING_DESPATCH: OrderStatus[] = [
   OrderStatus.PROCESSING,
 ];
 
+/** Orders that never count toward sales (unpaid or unwound). */
+const DEAD_ORDERS: OrderStatus[] = [
+  OrderStatus.PENDING,
+  OrderStatus.CANCELLED,
+  OrderStatus.REFUNDED,
+];
+
+const DAY = 86_400_000;
+
+/** Short weekday name in Lagos time, e.g. "Mon". */
+const weekdayLabel = (d: Date) =>
+  d.toLocaleDateString('en-US', { weekday: 'short', timeZone: 'Africa/Lagos' });
+
+/**
+ * Period-over-period change as a percentage, rounded to 1 dp. No prior activity
+ * reads as +100% when there's new activity, 0% when both are empty — so the card
+ * never shows a misleading "Infinity%".
+ */
+function pctChange(
+  current: Prisma.Decimal | number,
+  previous: Prisma.Decimal | number,
+): number {
+  const cur = new Prisma.Decimal(current);
+  const prev = new Prisma.Decimal(previous);
+  if (prev.isZero()) return cur.isZero() ? 0 : 100;
+  return Number(cur.minus(prev).dividedBy(prev).times(100).toFixed(1));
+}
+
 @Injectable()
 export class VendorOverviewService {
   constructor(private readonly prisma: PrismaService) {}
@@ -26,8 +54,27 @@ export class VendorOverviewService {
 
     const mine = { product: { vendorId: vendor.id } };
 
-    const [products, awaiting, soldItems, earnings, ratings, wallet] =
-      await Promise.all([
+    // Time windows for the trend cards + chart (Lagos day boundaries would be
+    // ideal, but UTC is close enough for a rolling-7-day view and keeps it simple).
+    const now = new Date();
+    const start7 = new Date(now.getTime() - 7 * DAY);
+    const start14 = new Date(now.getTime() - 14 * DAY);
+    const start30 = new Date(now.getTime() - 30 * DAY);
+    // The vendor keeps everything except the platform take-rate.
+    const keepRate = new Prisma.Decimal(10000 - vendor.takeRateBps).dividedBy(
+      10000,
+    );
+
+    const [
+      products,
+      awaiting,
+      soldItems,
+      earnings,
+      ratings,
+      wallet,
+      recentItems,
+      items30,
+    ] = await Promise.all([
         this.prisma.product.groupBy({
           by: ['status'],
           where: { vendorId: vendor.id },
@@ -40,15 +87,7 @@ export class VendorOverviewService {
         this.prisma.orderItem.aggregate({
           where: {
             product: { vendorId: vendor.id },
-            order: {
-              status: {
-                notIn: [
-                  OrderStatus.PENDING,
-                  OrderStatus.CANCELLED,
-                  OrderStatus.REFUNDED,
-                ],
-              },
-            },
+            order: { status: { notIn: DEAD_ORDERS } },
           },
           _sum: { totalPrice: true },
           _count: { _all: true },
@@ -67,6 +106,39 @@ export class VendorOverviewService {
           _count: { _all: true },
         }),
         this.prisma.wallet.findUnique({ where: { userId } }),
+        // Last 14 days of this vendor's sold lines — powers the 7-day cards
+        // (current vs prior week) and the daily revenue chart.
+        this.prisma.orderItem.findMany({
+          where: {
+            product: { vendorId: vendor.id },
+            order: { status: { notIn: DEAD_ORDERS }, createdAt: { gte: start14 } },
+          },
+          select: {
+            baseUnitPrice: true,
+            unitPrice: true,
+            quantity: true,
+            orderId: true,
+            order: { select: { createdAt: true } },
+          },
+        }),
+        // Last 30 days grouped later in JS for the Top sellers panel.
+        this.prisma.orderItem.findMany({
+          where: {
+            product: { vendorId: vendor.id },
+            order: { status: { notIn: DEAD_ORDERS }, createdAt: { gte: start30 } },
+          },
+          select: {
+            quantity: true,
+            productId: true,
+            product: {
+              select: {
+                title: true,
+                price: true,
+                images: { orderBy: { sortOrder: 'asc' }, take: 1, select: { url: true } },
+              },
+            },
+          },
+        }),
       ]);
 
     const countOf = (s: ProductStatus) =>
@@ -79,6 +151,54 @@ export class VendorOverviewService {
           (acc, e) => acc.plus(e._sum.amount ?? 0),
           new Prisma.Decimal(0),
         );
+
+    // Vendor net for a line = base (pre-markup) × qty × keep-rate.
+    const netOf = (i: (typeof recentItems)[number]) =>
+      (i.baseUnitPrice ?? i.unitPrice).times(i.quantity).times(keepRate);
+
+    // Daily revenue for the last 7 days, in chronological order (chart).
+    const series = Array.from({ length: 7 }, (_, idx) => {
+      const d = new Date(now.getTime() - (6 - idx) * DAY);
+      return { key: d.toISOString().slice(0, 10), label: weekdayLabel(d), amount: new Prisma.Decimal(0) };
+    });
+    let revenue7 = new Prisma.Decimal(0);
+    let revenuePrev7 = new Prisma.Decimal(0);
+    const orders7 = new Set<string>();
+    const ordersPrev7 = new Set<string>();
+    for (const it of recentItems) {
+      const created = it.order.createdAt;
+      const net = netOf(it);
+      if (created >= start7) {
+        revenue7 = revenue7.plus(net);
+        orders7.add(it.orderId);
+        const key = created.toISOString().slice(0, 10);
+        const bucket = series.find((s) => s.key === key);
+        if (bucket) bucket.amount = bucket.amount.plus(net);
+      } else {
+        revenuePrev7 = revenuePrev7.plus(net);
+        ordersPrev7.add(it.orderId);
+      }
+    }
+
+    // Top sellers over 30 days: units sold per product, richest first.
+    const sellers = new Map<
+      string,
+      { title: string; image: string | null; price: Prisma.Decimal; units: number }
+    >();
+    for (const it of items30) {
+      const cur = sellers.get(it.productId) ?? {
+        title: it.product.title,
+        image: it.product.images[0]?.url ?? null,
+        price: it.product.price,
+        units: 0,
+      };
+      cur.units += it.quantity;
+      sellers.set(it.productId, cur);
+    }
+    const topSellers = [...sellers.values()]
+      .sort((a, b) => b.units - a.units)
+      .slice(0, 5)
+      .map((s) => ({ title: s.title, image: s.image, price: s.price, units: s.units }));
 
     return {
       businessName: vendor.businessName,
@@ -107,6 +227,17 @@ export class VendorOverviewService {
         count: ratings._count._all,
       },
       walletBalance: wallet?.balance ?? new Prisma.Decimal(0),
+      // ── Dashboard analytics (rolling windows, real orders) ──
+      /** Net revenue after fees over the last 7 days + % change vs the prior 7. */
+      revenue7: { amount: revenue7, deltaPct: pctChange(revenue7, revenuePrev7) },
+      /** Orders in the last 7 days + % change vs the prior 7. */
+      orders7: { count: orders7.size, deltaPct: pctChange(orders7.size, ordersPrev7.size) },
+      /** Confirmed-but-undisbursed earnings — the next payout. */
+      pendingPayout: earned(['PENDING', 'CONFIRMED', 'QUEUED']),
+      /** Net revenue per day for the last 7 days (chart), oldest → newest. */
+      weeklyRevenue: series.map((s) => ({ label: s.label, amount: s.amount })),
+      /** Best-selling products by units over the last 30 days. */
+      topSellers,
     };
   }
 
