@@ -308,6 +308,7 @@ model InfluencerProfile {
   influencerCode String   @unique @default(cuid())
   socialHandles  Json
   niche          String?
+  bio            String?
   followerCount  Int?
   contentLinks   String[]
   isApproved     Boolean  @default(false)
