@@ -20,6 +20,12 @@ import { SubmitPostDto } from './dto/campaign.dto';
 export class InfluencerCampaignsController {
   constructor(private readonly campaigns: CampaignsService) {}
 
+  @Get('overview')
+  @ApiOperation({ summary: 'Dashboard rollup — earnings, clicks, conversions, campaigns' })
+  overview(@CurrentUser('id') userId: string) {
+    return this.campaigns.overview(userId);
+  }
+
   @Get('campaigns')
   @ApiOperation({
     summary: 'My assigned campaigns (brief, promo, UTM, metrics)',

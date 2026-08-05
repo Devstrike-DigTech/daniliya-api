@@ -22,6 +22,24 @@ import {
 
 const DOMAIN = 'https://daniliya.com';
 
+const DAY = 86_400_000;
+const ACTIVE_EARNING = ['PENDING', 'CONFIRMED', 'QUEUED'];
+
+/** Short weekday name in Lagos time, e.g. "Mon". */
+const weekdayLabel = (d: Date) =>
+  d.toLocaleDateString('en-US', { weekday: 'short', timeZone: 'Africa/Lagos' });
+
+/** Period-over-period % change, 1dp. No prior → +100% when there's activity now, else 0. */
+function pctChange(
+  current: Prisma.Decimal | number,
+  previous: Prisma.Decimal | number,
+): number {
+  const cur = new Prisma.Decimal(current);
+  const prev = new Prisma.Decimal(previous);
+  if (prev.isZero()) return cur.isZero() ? 0 : 100;
+  return Number(cur.minus(prev).dividedBy(prev).times(100).toFixed(1));
+}
+
 @Injectable()
 export class CampaignsService {
   constructor(
@@ -326,6 +344,121 @@ export class CampaignsService {
         status: r.status,
         at: r.createdAt,
       })),
+    };
+  }
+
+  /**
+   * Dashboard rollup for the influencer Overview — all real, derived from
+   * assignments (clicks/conversions), commission records (earnings) and click
+   * events (weekly clicks). Per-campaign "earned" is conversions × CPA for flat
+   * campaigns; commission campaigns carry no per-campaign total so read 0 there.
+   */
+  async overview(userId: string) {
+    const influencer = await this.influencerOrThrow(userId);
+    const now = new Date();
+    const start7 = new Date(now.getTime() - 7 * DAY);
+    const start14 = new Date(now.getTime() - 14 * DAY);
+    const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+    const prevMonthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1));
+
+    const [assignments, earnings, clicks14] = await Promise.all([
+      this.prisma.campaignInfluencerAssignment.findMany({
+        where: { influencerId: influencer.id },
+        include: { campaign: true },
+        orderBy: { assignedAt: 'desc' },
+      }),
+      this.prisma.commissionRecord.findMany({
+        where: {
+          beneficiaryId: userId,
+          beneficiaryType: 'INFLUENCER',
+          status: { not: 'VOIDED' },
+        },
+        select: { amount: true, status: true, createdAt: true },
+      }),
+      this.prisma.clickEvent.findMany({
+        where: {
+          influencerCode: influencer.influencerCode,
+          timestamp: { gte: start14 },
+        },
+        select: { timestamp: true },
+      }),
+    ]);
+
+    const zero = new Prisma.Decimal(0);
+    const sumAmt = (rows: { amount: Prisma.Decimal }[]) =>
+      rows.reduce((a, r) => a.plus(r.amount), zero);
+
+    const totalEarnings = sumAmt(earnings);
+    const pending = sumAmt(earnings.filter((r) => ACTIVE_EARNING.includes(r.status)));
+    const thisMonth = sumAmt(earnings.filter((r) => r.createdAt >= monthStart));
+    const prevMonth = sumAmt(
+      earnings.filter((r) => r.createdAt >= prevMonthStart && r.createdAt < monthStart),
+    );
+
+    // Weekly earnings series (last 7 days, chronological).
+    const series = Array.from({ length: 7 }, (_, i) => {
+      const d = new Date(now.getTime() - (6 - i) * DAY);
+      return { key: d.toISOString().slice(0, 10), label: weekdayLabel(d), amount: zero };
+    });
+    for (const r of earnings) {
+      if (r.createdAt >= start7) {
+        const key = r.createdAt.toISOString().slice(0, 10);
+        const b = series.find((s) => s.key === key);
+        if (b) b.amount = b.amount.plus(r.amount);
+      }
+    }
+
+    const clicksThisWeek = clicks14.filter((c) => c.timestamp >= start7).length;
+    const clicksPrev = clicks14.length - clicksThisWeek;
+
+    const totalClicks = assignments.reduce((n, a) => n + a.clicks, 0);
+    const conversions = assignments.reduce((n, a) => n + a.conversions, 0);
+    const conversionRate =
+      totalClicks > 0 ? Number(((conversions / totalClicks) * 100).toFixed(1)) : 0;
+
+    // Product → a brand-ish label for the campaign card.
+    const productIds = [
+      ...new Set(assignments.flatMap((a) => a.campaign.productIds)),
+    ];
+    const products = productIds.length
+      ? await this.prisma.product.findMany({
+          where: { id: { in: productIds } },
+          select: { id: true, title: true, category: true },
+        })
+      : [];
+    const byProduct = new Map(products.map((p) => [p.id, p]));
+    const brandOf = (ids: string[]) => {
+      const p = ids.map((id) => byProduct.get(id)).find(Boolean);
+      return p?.category ?? p?.title ?? 'Daniliya';
+    };
+
+    const shape = (a: (typeof assignments)[number]) => ({
+      campaignId: a.campaignId,
+      title: a.campaign.title,
+      brand: brandOf(a.campaign.productIds),
+      cpa: a.campaign.flatAmount,
+      clicks: a.clicks,
+      conversions: a.conversions,
+      earned: a.campaign.flatAmount
+        ? a.campaign.flatAmount.times(a.conversions)
+        : zero,
+    });
+
+    return {
+      totalEarnings,
+      earningsMomPct: pctChange(thisMonth, prevMonth),
+      pending,
+      conversions,
+      conversionRate,
+      clicksThisWeek,
+      clicksDeltaPct: pctChange(clicksThisWeek, clicksPrev),
+      weekly: series.map((s) => ({ label: s.label, amount: s.amount })),
+      active: assignments
+        .filter((a) => a.campaign.status === CampaignStatus.ACTIVE)
+        .map(shape),
+      ended: assignments
+        .filter((a) => a.campaign.status === CampaignStatus.ENDED)
+        .map(shape),
     };
   }
 
