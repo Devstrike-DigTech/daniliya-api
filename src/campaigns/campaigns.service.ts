@@ -277,11 +277,36 @@ export class CampaignsService {
         orderBy: { assignedAt: 'desc' },
       },
     );
+
+    // A brand-ish label per campaign, derived from its first product.
+    const productIds = [
+      ...new Set(assignments.flatMap((a) => a.campaign.productIds)),
+    ];
+    const products = productIds.length
+      ? await this.prisma.product.findMany({
+          where: { id: { in: productIds } },
+          select: { id: true, title: true, category: true, slug: true },
+        })
+      : [];
+    const byProduct = new Map(products.map((p) => [p.id, p]));
+    const brandOf = (ids: string[]) => {
+      const p = ids.map((id) => byProduct.get(id)).find(Boolean);
+      return p?.category ?? p?.title ?? 'Daniliya';
+    };
+    const slugOf = (ids: string[]) => {
+      const p = ids.map((id) => byProduct.get(id)).find(Boolean);
+      return p?.slug ?? null;
+    };
+
     return assignments.map((a) => ({
       campaignId: a.campaignId,
       title: a.campaign.title,
+      brand: brandOf(a.campaign.productIds),
+      productSlug: slugOf(a.campaign.productIds),
       brief: a.campaign.brief,
       status: a.campaign.status,
+      startDate: a.campaign.startDate,
+      endDate: a.campaign.endDate,
       payoutModel: a.campaign.payoutModel,
       cpa: a.campaign.flatAmount,
       commissionRate: a.campaign.commissionRate,
@@ -290,6 +315,10 @@ export class CampaignsService {
       accepted: a.accepted,
       clicks: a.clicks,
       conversions: a.conversions,
+      /** Per-campaign earned: conversions × CPA (flat campaigns). */
+      earned: a.campaign.flatAmount
+        ? a.campaign.flatAmount.times(a.conversions)
+        : new Prisma.Decimal(0),
       submissions: a.submissions.map((s) => ({
         postUrl: s.postUrl,
         status: s.status,
