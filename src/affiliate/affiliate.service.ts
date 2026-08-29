@@ -8,6 +8,7 @@ import {
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { PRICING } from '../config/pricing';
+import { shareLink } from '../common/share-links';
 
 const DAY = 86_400_000;
 const weekdayLabel = (d: Date) =>
@@ -129,13 +130,13 @@ export class AffiliateService {
       orderBy: { createdAt: 'desc' },
       take: 50,
     });
-    const base = this.webBase();
+    const code = p.referralCode;
     return {
-      master: `${base}/shop?ref=${p.referralCode}`,
+      master: shareLink(code, 'affiliate'),
       products: products.map((pr) => ({
         title: pr.title,
         price: pr.price,
-        link: `${base}/shop/${pr.slug}?ref=${p.referralCode}`,
+        link: shareLink(code, 'affiliate', pr.slug),
       })),
     };
   }

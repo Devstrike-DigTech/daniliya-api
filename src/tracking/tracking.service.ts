@@ -42,7 +42,11 @@ export class TrackingService {
     const dest = opts.productSlug
       ? `${base}/shop/${encodeURIComponent(opts.productSlug)}`
       : `${base}/shop`;
-    const url = `${dest}?ref=${encodeURIComponent(code)}`;
+    // Typed attribution param: the storefront reads `ref` as an affiliate code
+    // and `promo` as an influencer promo code, and sends each to the right order
+    // field. An unknown code defaults to `ref` (a harmless no-match).
+    const to = (param: 'ref' | 'promo') =>
+      `${dest}?${param}=${encodeURIComponent(code)}`;
 
     try {
       // Affiliate referral code? Log the click against the affiliate.
@@ -57,7 +61,7 @@ export class TrackingService {
             userAgent: opts.userAgent?.slice(0, 300) ?? null,
           },
         });
-        return url;
+        return to('ref');
       }
 
       // Otherwise an influencer campaign promo code.
@@ -67,7 +71,7 @@ export class TrackingService {
           include: { influencer: { select: { influencerCode: true } } },
         },
       );
-      if (!assignment) return url;
+      if (!assignment) return to('ref');
 
       await this.prisma.$transaction([
         this.prisma.campaignInfluencerAssignment.update({
@@ -82,6 +86,7 @@ export class TrackingService {
           },
         }),
       ]);
+      return to('promo');
     } catch (err) {
       // Never let a tracking failure block the redirect.
       this.logger.error(
@@ -89,6 +94,6 @@ export class TrackingService {
         err instanceof Error ? err.stack : String(err),
       );
     }
-    return url;
+    return to('ref');
   }
 }

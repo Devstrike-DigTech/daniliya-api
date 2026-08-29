@@ -13,6 +13,7 @@ import {
 import { randomBytes } from 'crypto';
 import { AuditService } from '../audit/audit.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { shareLink } from '../common/share-links';
 import {
   AssignInfluencersDto,
   CreateCampaignDto,
@@ -312,6 +313,8 @@ export class CampaignsService {
       commissionRate: a.campaign.commissionRate,
       promoCode: a.promoCode,
       utmLink: a.utmLink,
+      /** Click-tracked share link — routes through /track before the storefront. */
+      trackLink: a.promoCode ? shareLink(a.promoCode, 'influencer') : a.utmLink,
       accepted: a.accepted,
       clicks: a.clicks,
       conversions: a.conversions,
