@@ -7,6 +7,17 @@ import {
   Prisma,
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { PRICING } from '../config/pricing';
+
+const DAY = 86_400_000;
+const weekdayLabel = (d: Date) =>
+  d.toLocaleDateString('en-US', { weekday: 'short', timeZone: 'Africa/Lagos' });
+function pctChange(cur: Prisma.Decimal | number, prev: Prisma.Decimal | number): number {
+  const c = new Prisma.Decimal(cur);
+  const p = new Prisma.Decimal(prev);
+  if (p.isZero()) return c.isZero() ? 0 : 100;
+  return Number(c.minus(p).dividedBy(p).times(100).toFixed(1));
+}
 
 /** Everything not refunded — used for lifetime/leaderboard totals. */
 const EARNED_STATES = [
@@ -38,24 +49,74 @@ export class AffiliateService {
 
   async overview(userId: string) {
     const p = await this.profileOrThrow(userId);
-    const [lifetime, pending, conversions] = await Promise.all([
-      this.sum(userId, EARNED_STATES),
-      this.sum(userId, UNPAID_STATES),
-      this.prisma.commissionRecord.count({
+    const now = new Date();
+    const start7 = new Date(now.getTime() - 7 * DAY);
+    const start14 = new Date(now.getTime() - 14 * DAY);
+    const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+    const prevMonthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1));
+
+    const [records, clicks14, totalClicks] = await Promise.all([
+      this.prisma.commissionRecord.findMany({
         where: {
           beneficiaryId: userId,
           beneficiaryType: BeneficiaryType.AFFILIATE,
           status: { not: CommissionStatus.VOIDED },
         },
+        select: { amount: true, status: true, createdAt: true },
       }),
+      p.referralCode
+        ? this.prisma.clickEvent.findMany({
+            where: { affiliateCode: p.referralCode, timestamp: { gte: start14 } },
+            select: { timestamp: true },
+          })
+        : Promise.resolve([] as { timestamp: Date }[]),
+      p.referralCode
+        ? this.prisma.clickEvent.count({ where: { affiliateCode: p.referralCode } })
+        : Promise.resolve(0),
     ]);
+
+    const zero = new Prisma.Decimal(0);
+    const sumWhere = (fn: (r: (typeof records)[number]) => boolean) =>
+      records.filter(fn).reduce((a, r) => a.plus(r.amount), zero);
+
+    const earned: CommissionStatus[] = EARNED_STATES;
+    const unpaid: CommissionStatus[] = UNPAID_STATES;
+    const lifetime = sumWhere((r) => earned.includes(r.status));
+    const pending = sumWhere((r) => unpaid.includes(r.status));
+    const conversions = records.length;
+    const thisMonth = sumWhere((r) => r.createdAt >= monthStart);
+    const prevMonth = sumWhere((r) => r.createdAt >= prevMonthStart && r.createdAt < monthStart);
+
+    // Weekly earnings series (last 7 days, chronological).
+    const series = Array.from({ length: 7 }, (_, i) => {
+      const d = new Date(now.getTime() - (6 - i) * DAY);
+      return { key: d.toISOString().slice(0, 10), label: weekdayLabel(d), amount: zero };
+    });
+    for (const r of records) {
+      if (r.createdAt >= start7) {
+        const b = series.find((s) => s.key === r.createdAt.toISOString().slice(0, 10));
+        if (b) b.amount = b.amount.plus(r.amount);
+      }
+    }
+
+    const clicksThisWeek = clicks14.filter((c) => c.timestamp >= start7).length;
+    const clicksPrev = clicks14.length - clicksThisWeek;
+    const conversionRate = totalClicks > 0 ? Number(((conversions / totalClicks) * 100).toFixed(1)) : 0;
+
     return {
       code: p.referralCode,
       tier: p.tier,
+      isActive: p.isActive,
       lifetimeEarnings: lifetime,
       pending,
       conversions,
-      isActive: p.isActive,
+      /** Flat commission the affiliate earns per confirmed sale. */
+      commissionPerSale: PRICING.AFFILIATE_COMMISSION,
+      earningsMomPct: pctChange(thisMonth, prevMonth),
+      clicksThisWeek,
+      clicksDeltaPct: pctChange(clicksThisWeek, clicksPrev),
+      conversionRate,
+      weekly: series.map((s) => ({ label: s.label, amount: s.amount })),
     };
   }
 

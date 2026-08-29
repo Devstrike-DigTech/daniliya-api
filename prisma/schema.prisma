@@ -1011,12 +1011,16 @@ model AffiliateResource {
 
 model ClickEvent {
   id             String   @id @default(uuid())
-  influencerCode String
+  /// One of these carries the attribution code, depending on the share link.
+  influencerCode String?
+  affiliateCode  String?
   campaignId     String?
   productId      String?
   userAgent      String?
   timestamp      DateTime @default(now())
 
+  @@index([affiliateCode, timestamp])
+  @@index([influencerCode, timestamp])
   @@map("click_events")
 }
 

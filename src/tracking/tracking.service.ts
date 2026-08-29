@@ -45,6 +45,22 @@ export class TrackingService {
     const url = `${dest}?ref=${encodeURIComponent(code)}`;
 
     try {
+      // Affiliate referral code? Log the click against the affiliate.
+      const affiliate = await this.prisma.affiliateProfile.findUnique({
+        where: { referralCode: code },
+        select: { id: true },
+      });
+      if (affiliate) {
+        await this.prisma.clickEvent.create({
+          data: {
+            affiliateCode: code,
+            userAgent: opts.userAgent?.slice(0, 300) ?? null,
+          },
+        });
+        return url;
+      }
+
+      // Otherwise an influencer campaign promo code.
       const assignment = await this.prisma.campaignInfluencerAssignment.findFirst(
         {
           where: { promoCode: code },
