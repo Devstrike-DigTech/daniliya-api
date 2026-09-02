@@ -157,7 +157,15 @@ export class AffiliateService {
         beneficiaryType: BeneficiaryType.AFFILIATE,
       },
       include: {
-        order: { select: { ref: true, total: true, createdAt: true } },
+        order: {
+          select: {
+            ref: true,
+            total: true,
+            createdAt: true,
+            customer: { select: { firstName: true, lastName: true } },
+            items: { select: { titleSnapshot: true }, take: 2 },
+          },
+        },
       },
       orderBy: { createdAt: 'desc' },
     });
@@ -167,6 +175,14 @@ export class AffiliateService {
     const gmv = rows
       .filter((r) => r.status !== CommissionStatus.VOIDED)
       .reduce((s, r) => s.plus(r.order.total), new Prisma.Decimal(0));
+
+    const productLabel = (items: { titleSnapshot: string }[]) =>
+      items.length === 0
+        ? '—'
+        : items.length === 1
+          ? items[0].titleSnapshot
+          : `${items[0].titleSnapshot} +${items.length - 1} more`;
+
     return {
       summary: {
         grossGmv: gmv,
@@ -175,6 +191,8 @@ export class AffiliateService {
       },
       records: rows.map((r) => ({
         order: r.order.ref,
+        customer: `${r.order.customer.firstName} ${r.order.customer.lastName}`.trim(),
+        product: productLabel(r.order.items),
         sale: r.order.total,
         commission: r.amount,
         status: r.status,
@@ -261,11 +279,13 @@ export class AffiliateService {
         status: { in: EARNED_STATES },
       },
       _sum: { amount: true },
+      _count: { _all: true },
     });
     const ranked = grouped
       .map((g) => ({
         userId: g.beneficiaryId,
         earned: g._sum.amount ?? new Prisma.Decimal(0),
+        sales: g._count._all,
       }))
       .sort((a, b) => (b.earned.greaterThan(a.earned) ? 1 : -1));
 
@@ -279,6 +299,8 @@ export class AffiliateService {
       rank: i + 1,
       name: byUser.get(r.userId)?.user.firstName ?? 'Affiliate',
       code: byUser.get(r.userId)?.referralCode ?? null,
+      tier: byUser.get(r.userId)?.tier ?? 'BRONZE',
+      sales: r.sales,
       earned: r.earned,
       you: r.userId === userId,
     }));
