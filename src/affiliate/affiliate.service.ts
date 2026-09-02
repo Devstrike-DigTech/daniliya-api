@@ -125,8 +125,14 @@ export class AffiliateService {
     const p = await this.profileOrThrow(userId);
     if (!p.referralCode) return { master: null, products: [] };
     const products = await this.prisma.product.findMany({
-      where: { status: 'ACTIVE' },
-      select: { slug: true, title: true, price: true },
+      where: { status: 'ACTIVE', affiliateEligible: true },
+      select: {
+        slug: true,
+        title: true,
+        price: true,
+        category: true,
+        images: { orderBy: { sortOrder: 'asc' }, take: 1, select: { url: true } },
+      },
       orderBy: { createdAt: 'desc' },
       take: 50,
     });
@@ -136,6 +142,8 @@ export class AffiliateService {
       products: products.map((pr) => ({
         title: pr.title,
         price: pr.price,
+        category: pr.category,
+        image: pr.images[0]?.url ?? null,
         link: shareLink(code, 'affiliate', pr.slug),
       })),
     };
@@ -177,7 +185,12 @@ export class AffiliateService {
 
   async referrals(userId: string) {
     const p = await this.profileOrThrow(userId);
-    if (!p.referralCode) return { summary: { customers: 0 }, rows: [] };
+    if (!p.referralCode)
+      return {
+        summary: { customers: 0, totalOrders: 0, newThisMonth: 0, repeatBuyers: 0 },
+        code: null,
+        rows: [],
+      };
 
     const orders = await this.prisma.order.findMany({
       where: {
@@ -189,27 +202,53 @@ export class AffiliateService {
       },
     });
 
+    const now = new Date();
+    const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+    const commission = PRICING.AFFILIATE_COMMISSION;
+
     // Group by customer.
     const byCustomer = new Map<
       string,
-      { name: string; orders: number; spend: Prisma.Decimal; last: Date }
+      { name: string; orders: number; spend: Prisma.Decimal; commission: Prisma.Decimal; last: Date; first: Date }
     >();
     for (const o of orders) {
       const key = o.customer.id;
       const g = byCustomer.get(key) ?? {
-        name: `${o.customer.firstName} ${o.customer.lastName}`,
+        name: `${o.customer.firstName} ${o.customer.lastName}`.trim(),
         orders: 0,
         spend: new Prisma.Decimal(0),
+        commission: new Prisma.Decimal(0),
         last: o.createdAt,
+        first: o.createdAt,
       };
       g.orders += 1;
       g.spend = g.spend.plus(o.total);
+      // Flat commission per referred sale.
+      g.commission = g.commission.plus(commission);
       if (o.createdAt > g.last) g.last = o.createdAt;
+      if (o.createdAt < g.first) g.first = o.createdAt;
       byCustomer.set(key, g);
     }
+    const groups = [...byCustomer.values()];
     return {
-      summary: { customers: byCustomer.size, totalOrders: orders.length },
-      rows: [...byCustomer.values()],
+      summary: {
+        customers: byCustomer.size,
+        totalOrders: orders.length,
+        /** Customers whose first referred order landed this month. */
+        newThisMonth: groups.filter((g) => g.first >= monthStart).length,
+        /** Customers with more than one referred order. */
+        repeatBuyers: groups.filter((g) => g.orders > 1).length,
+      },
+      code: p.referralCode,
+      rows: groups
+        .sort((a, b) => b.last.getTime() - a.last.getTime())
+        .map((g) => ({
+          name: g.name,
+          orders: g.orders,
+          spend: g.spend,
+          commission: g.commission,
+          last: g.last,
+        })),
     };
   }
 
