@@ -126,7 +126,26 @@ export class KycService {
     if (!record) {
       return { status: KycStatus.PENDING, submitted: false };
     }
-    return { ...this.present(record), bankAccount: record.bankAccount };
+    // Identity summary for the portal's KYC card. Only non-sensitive
+    // fragments are exposed: the last four digits (already all that is
+    // stored) and the uploaded document's file name — never a full number.
+    const govIdName = record.govIdUrl
+      ? decodeURIComponent(record.govIdUrl.split('/').pop() ?? '').split('?')[0] ||
+        null
+      : null;
+    return {
+      ...this.present(record),
+      bankAccount: record.bankAccount,
+      identity: {
+        idType: record.idType,
+        idNumberLast4: record.idNumberLast4,
+        ninLast4: record.ninLast4,
+        bvnLast4: record.bvnLast4,
+        govIdType: record.govIdType,
+        govIdName,
+        dob: record.dob,
+      },
+    };
   }
 
   /** Admin decision. Used in stub mode and for Smile ID's manual-review cases. */
